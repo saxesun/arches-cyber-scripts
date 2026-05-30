@@ -9,159 +9,102 @@ $ReportFolder = "$env:USERPROFILE\Desktop\ClientAudit_$ComputerName`_$TimeStamp"
 New-Item -ItemType Directory -Path $ReportFolder -Force | Out-Null
 
 function Save-Text {
-    param (
-        [string]$FileName,
-        [scriptblock]$Command
-    )
-
+    param ([string]$FileName, [scriptblock]$Command)
     $Path = Join-Path $ReportFolder $FileName
-    try {
-        & $Command | Out-File -FilePath $Path -Encoding UTF8
-    }
-    catch {
-        "ERROR: $($_.Exception.Message)" | Out-File -FilePath $Path -Encoding UTF8
-    }
+    try { & $Command | Out-File -FilePath $Path -Encoding UTF8 }
+    catch { "ERROR: $($_.Exception.Message)" | Out-File -FilePath $Path -Encoding UTF8 }
 }
 
 function Save-Csv {
-    param (
-        [string]$FileName,
-        [scriptblock]$Command
-    )
-
+    param ([string]$FileName, [scriptblock]$Command)
     $Path = Join-Path $ReportFolder $FileName
-    try {
-        & $Command | Export-Csv -Path $Path -NoTypeInformation -Encoding UTF8
-    }
+    try { & $Command | Export-Csv -Path $Path -NoTypeInformation -Encoding UTF8 }
     catch {
-        [PSCustomObject]@{
-            Error = $_.Exception.Message
-        } | Export-Csv -Path $Path -NoTypeInformation -Encoding UTF8
+        [PSCustomObject]@{ Error = $_.Exception.Message } |
+        Export-Csv -Path $Path -NoTypeInformation -Encoding UTF8
     }
 }
 
-# Basic computer info
+# 01 Basic computer info
 Save-Csv "01_Computer_Info.csv" {
     Get-ComputerInfo | Select-Object `
-        CsName,
-        WindowsProductName,
-        WindowsVersion,
-        OsBuildNumber,
-        OsArchitecture,
-        CsManufacturer,
-        CsModel,
-        CsDomain,
-        CsWorkgroup,
-        CsUserName,
-        BiosFirmwareType,
-        SecureBootState,
-        CsTotalPhysicalMemory,
-        OsLastBootUpTime
+        CsName, WindowsProductName, WindowsVersion, OsBuildNumber, OsArchitecture,
+        CsManufacturer, CsModel, CsDomain, CsWorkgroup, CsUserName,
+        BiosFirmwareType, SecureBootState, CsTotalPhysicalMemory, OsLastBootUpTime
 }
 
-# Serial number / BIOS
+# 02 Serial / BIOS
 Save-Csv "02_BIOS_Serial.csv" {
-    Get-CimInstance Win32_BIOS | Select-Object `
-        Manufacturer,
-        SMBIOSBIOSVersion,
-        SerialNumber,
-        ReleaseDate
+    Get-CimInstance Win32_BIOS | Select-Object Manufacturer, SMBIOSBIOSVersion, SerialNumber, ReleaseDate
 }
 
-# CPU
+# 03 CPU
 Save-Csv "03_CPU.csv" {
-    Get-CimInstance Win32_Processor | Select-Object `
-        Name,
-        Manufacturer,
-        NumberOfCores,
-        NumberOfLogicalProcessors,
-        MaxClockSpeed,
-        SocketDesignation
+    Get-CimInstance Win32_Processor | Select-Object Name, Manufacturer, NumberOfCores, NumberOfLogicalProcessors, MaxClockSpeed
 }
 
-# RAM
+# 04 RAM
 Save-Csv "04_RAM.csv" {
-    Get-CimInstance Win32_PhysicalMemory | Select-Object `
-        Manufacturer,
-        PartNumber,
-        Capacity,
-        Speed,
-        ConfiguredClockSpeed,
-        DeviceLocator
+    Get-CimInstance Win32_PhysicalMemory | Select-Object Manufacturer, PartNumber, Capacity, Speed, ConfiguredClockSpeed, DeviceLocator
 }
 
-# Storage disks
+# 05 Storage
 Save-Csv "05_Storage_Disks.csv" {
-    Get-CimInstance Win32_DiskDrive | Select-Object `
-        Model,
-        SerialNumber,
-        MediaType,
-        InterfaceType,
-        Size
+    Get-CimInstance Win32_DiskDrive | Select-Object Model, SerialNumber, MediaType, InterfaceType, Size
 }
 
-# Volumes
 Save-Csv "06_Storage_Volumes.csv" {
-    Get-Volume | Select-Object `
-        DriveLetter,
-        FileSystemLabel,
-        FileSystem,
-        HealthStatus,
-        Size,
-        SizeRemaining
+    Get-Volume | Select-Object DriveLetter, FileSystemLabel, FileSystem, HealthStatus, Size, SizeRemaining
 }
 
-# Local users
+# 07 Users
 Save-Csv "07_Local_Users.csv" {
-    Get-LocalUser | Select-Object `
-        Name,
-        Enabled,
-        LastLogon,
-        PasswordRequired,
-        PasswordLastSet,
-        UserMayChangePassword,
-        PasswordExpires,
-        Description
+    Get-LocalUser | Select-Object Name, Enabled, LastLogon, PasswordRequired, PasswordLastSet, UserMayChangePassword, PasswordExpires, Description
 }
 
-# Local admins
+# 08 Admins
 Save-Text "08_Local_Admins.txt" {
     Get-LocalGroupMember Administrators
 }
 
-# BitLocker status
-Save-Text "09_BitLocker_Status.txt" {
+Save-Csv "08A_Local_Admin_Count.csv" {
+    $Admins = Get-LocalGroupMember Administrators
+    [PSCustomObject]@{
+        ComputerName = $env:COMPUTERNAME
+        LocalAdminCount = $Admins.Count
+        AdminNames = ($Admins.Name -join "; ")
+    }
+}
+
+# 09 Password policy
+Save-Text "09_Password_Policy.txt" {
+    net accounts
+}
+
+# 10 BitLocker
+Save-Text "10_BitLocker_Status.txt" {
     manage-bde -status
 }
 
-# Defender status
-Save-Csv "10_Defender_Status.csv" {
+# 11 Defender
+Save-Csv "11_Defender_Status.csv" {
     Get-MpComputerStatus | Select-Object `
-        AMServiceEnabled,
-        AntivirusEnabled,
-        RealTimeProtectionEnabled,
-        BehaviorMonitorEnabled,
-        IoavProtectionEnabled,
-        NISEnabled,
-        AntivirusSignatureLastUpdated,
-        QuickScanEndTime,
-        FullScanEndTime
+        AMServiceEnabled, AntivirusEnabled, RealTimeProtectionEnabled,
+        BehaviorMonitorEnabled, IoavProtectionEnabled, NISEnabled,
+        AntivirusSignatureLastUpdated, QuickScanEndTime, FullScanEndTime
 }
 
-# Firewall profiles
-Save-Csv "11_Firewall_Profiles.csv" {
-    Get-NetFirewallProfile | Select-Object `
-        Name,
-        Enabled,
-        DefaultInboundAction,
-        DefaultOutboundAction,
-        AllowInboundRules,
-        AllowLocalFirewallRules,
-        NotifyOnListen
+Save-Text "11A_Defender_Threats.txt" {
+    Get-MpThreatDetection
 }
 
-# RDP status
-Save-Csv "12_RDP_Status.csv" {
+# 12 Firewall
+Save-Csv "12_Firewall_Profiles.csv" {
+    Get-NetFirewallProfile | Select-Object Name, Enabled, DefaultInboundAction, DefaultOutboundAction, AllowInboundRules, AllowLocalFirewallRules, NotifyOnListen
+}
+
+# 13 RDP
+Save-Csv "13_RDP_Status.csv" {
     $RDP = Get-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server'
     [PSCustomObject]@{
         ComputerName = $env:COMPUTERNAME
@@ -170,8 +113,8 @@ Save-Csv "12_RDP_Status.csv" {
     }
 }
 
-# Installed software
-Save-Csv "13_Installed_Software.csv" {
+# 14 Installed software
+Save-Csv "14_Installed_Software.csv" {
     Get-ItemProperty `
         HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*,
         HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* |
@@ -180,86 +123,60 @@ Save-Csv "13_Installed_Software.csv" {
     Sort-Object DisplayName
 }
 
-# Network adapters
-Save-Csv "14_Network_Adapters.csv" {
-    Get-NetAdapter | Select-Object `
-        Name,
-        InterfaceDescription,
-        Status,
-        MacAddress,
-        LinkSpeed,
-        MediaType
+# 15 Network adapters
+Save-Csv "15_Network_Adapters.csv" {
+    Get-NetAdapter | Select-Object Name, InterfaceDescription, Status, MacAddress, LinkSpeed, MediaType
 }
 
-# IP / DNS / Gateway
-Save-Text "15_IP_DNS_Gateway.txt" {
+# 16 IP / DNS / gateway
+Save-Text "16_IP_DNS_Gateway.txt" {
     Get-NetIPConfiguration
 }
 
-# DNS client settings
-Save-Csv "16_DNS_Settings.csv" {
-    Get-DnsClientServerAddress | Select-Object `
-        InterfaceAlias,
-        AddressFamily,
-        ServerAddresses
+Save-Csv "17_DNS_Settings.csv" {
+    Get-DnsClientServerAddress | Select-Object InterfaceAlias, AddressFamily, ServerAddresses
 }
 
-# Default gateway / possible router info
-Save-Csv "17_Default_Gateway.csv" {
-    Get-NetRoute -DestinationPrefix "0.0.0.0/0" | Select-Object `
-        InterfaceAlias,
-        NextHop,
-        RouteMetric,
-        ifIndex
+Save-Csv "18_Default_Gateway.csv" {
+    Get-NetRoute -DestinationPrefix "0.0.0.0/0" | Select-Object InterfaceAlias, NextHop, RouteMetric, ifIndex
 }
 
-# ARP table - may reveal router MAC/vendor later
-Save-Text "18_ARP_Table.txt" {
+Save-Text "19_ARP_Table.txt" {
     arp -a
 }
 
-# Try to identify router web interface / brand clues
-Save-Text "19_Router_Brand_Clues.txt" {
+# 20 Router clues
+Save-Text "20_Router_Brand_Clues.txt" {
     $Gateway = (Get-NetRoute -DestinationPrefix "0.0.0.0/0" | Select-Object -First 1).NextHop
-
     "Default Gateway: $Gateway"
-    ""
-    "Trying HTTP title/header check..."
     ""
 
     if ($Gateway) {
+        "HTTP gateway check:"
         try {
             Invoke-WebRequest -Uri "http://$Gateway" -UseBasicParsing -TimeoutSec 5 |
             Select-Object StatusCode, StatusDescription, Headers, Content
         }
-        catch {
-            "HTTP check failed or blocked: $($_.Exception.Message)"
-        }
+        catch { "HTTP check failed: $($_.Exception.Message)" }
 
         ""
-        "Trying HTTPS title/header check..."
-        ""
-
+        "HTTPS gateway check:"
         try {
             Invoke-WebRequest -Uri "https://$Gateway" -UseBasicParsing -TimeoutSec 5 |
             Select-Object StatusCode, StatusDescription, Headers, Content
         }
-        catch {
-            "HTTPS check failed or blocked: $($_.Exception.Message)"
-        }
-    }
-    else {
-        "No default gateway found."
+        catch { "HTTPS check failed: $($_.Exception.Message)" }
     }
 }
 
-# Windows 11 compatibility clues
-Save-Csv "20_Windows11_Compatibility_Clues.csv" {
+# 21 Windows 11 compatibility clues
+Save-Csv "21_Windows11_Compatibility_Clues.csv" {
     $TPM = Get-Tpm
     $CPU = Get-CimInstance Win32_Processor | Select-Object -First 1
     $RAM = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2)
     $Disk = Get-CimInstance Win32_DiskDrive | Select-Object -First 1
     $SecureBoot = Confirm-SecureBootUEFI -ErrorAction SilentlyContinue
+    $ComputerSystem = Get-CimInstance Win32_ComputerSystem
 
     [PSCustomObject]@{
         ComputerName = $env:COMPUTERNAME
@@ -274,19 +191,18 @@ Save-Csv "20_Windows11_Compatibility_Clues.csv" {
         SecureBoot_Enabled = $SecureBoot
         Firmware_Type = (Get-ComputerInfo).BiosFirmwareType
         OS_Architecture = (Get-ComputerInfo).OsArchitecture
+        PartOfDomain = $ComputerSystem.PartOfDomain
+        Domain = $ComputerSystem.Domain
     }
 }
 
-# Last boot time
-Save-Csv "21_Last_Boot.csv" {
-    Get-CimInstance Win32_OperatingSystem | Select-Object `
-        CSName,
-        LastBootUpTime,
-        LocalDateTime
+# 22 Last boot
+Save-Csv "22_Last_Boot.csv" {
+    Get-CimInstance Win32_OperatingSystem | Select-Object CSName, LastBootUpTime, LocalDateTime
 }
 
-# Basic update status
-Save-Text "22_Windows_Update_Status.txt" {
+# 23 Windows Update
+Save-Text "23_Windows_Update_Status.txt" {
     "Windows Update Service:"
     Get-Service wuauserv
 
@@ -299,26 +215,24 @@ Save-Text "22_Windows_Update_Status.txt" {
     Get-ItemProperty "HKLM:\Software\Policies\Microsoft\Windows\WindowsUpdate" -ErrorAction SilentlyContinue
 }
 
-# SMB shares
-Save-Csv "23_SMB_Shares.csv" {
-    Get-SmbShare | Select-Object `
-        Name,
-        Path,
-        Description,
-        ShareState,
-        FolderEnumerationMode
+# 24 Activation status
+Save-Csv "24_Windows_Activation_Status.csv" {
+    Get-CimInstance SoftwareLicensingProduct |
+    Where-Object { $_.PartialProductKey } |
+    Select-Object Name, Description, LicenseStatus, PartialProductKey
 }
 
-# Listening ports
-Save-Csv "24_Listening_Ports.csv" {
-    Get-NetTCPConnection -State Listen | Select-Object `
-        LocalAddress,
-        LocalPort,
-        OwningProcess
+# 25 SMB shares
+Save-Csv "25_SMB_Shares.csv" {
+    Get-SmbShare | Select-Object Name, Path, Description, ShareState, FolderEnumerationMode
 }
 
-# Processes tied to listening ports
-Save-Csv "25_Listening_Port_Processes.csv" {
+# 26 Listening ports
+Save-Csv "26_Listening_Ports.csv" {
+    Get-NetTCPConnection -State Listen | Select-Object LocalAddress, LocalPort, OwningProcess
+}
+
+Save-Csv "27_Listening_Port_Processes.csv" {
     Get-NetTCPConnection -State Listen |
     ForEach-Object {
         $Process = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue
@@ -331,19 +245,53 @@ Save-Csv "25_Listening_Port_Processes.csv" {
     }
 }
 
-# Startup programs
-Save-Csv "26_Startup_Programs.csv" {
-    Get-CimInstance Win32_StartupCommand | Select-Object `
-        Name,
-        Command,
-        Location,
-        User
+# 28 Startup programs
+Save-Csv "28_Startup_Programs.csv" {
+    Get-CimInstance Win32_StartupCommand | Select-Object Name, Command, Location, User
 }
 
-# Antivirus products registered in Security Center
-Save-Csv "27_Security_Center_AV.csv" {
+# 29 Security Center AV
+Save-Csv "29_Security_Center_AV.csv" {
     Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct |
     Select-Object displayName, pathToSignedProductExe, productState
+}
+
+# 30 Mapped drives
+Save-Csv "30_Mapped_Drives.csv" {
+    Get-SmbMapping | Select-Object LocalPath, RemotePath, Status, UserName
+}
+
+# 31 Printers
+Save-Csv "31_Printers.csv" {
+    Get-Printer | Select-Object Name, DriverName, PortName, Shared, Published, PrinterStatus
+}
+
+# 32 Quick risk summary
+Save-Text "32_Quick_Risk_Summary.txt" {
+    $Admins = Get-LocalGroupMember Administrators
+    $RDP = Get-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server'
+    $Firewall = Get-NetFirewallProfile
+    $Defender = Get-MpComputerStatus
+    $TPM = Get-Tpm
+    $SecureBoot = Confirm-SecureBootUEFI -ErrorAction SilentlyContinue
+
+    "Quick Risk Summary"
+    "=================="
+    ""
+    "Computer Name: $env:COMPUTERNAME"
+    "Local Admin Count: $($Admins.Count)"
+    "RDP Enabled: $(if ($RDP.fDenyTSConnections -eq 0) { 'Yes' } else { 'No' })"
+    "Defender Antivirus Enabled: $($Defender.AntivirusEnabled)"
+    "Defender Real-Time Protection Enabled: $($Defender.RealTimeProtectionEnabled)"
+    "TPM Present: $($TPM.TpmPresent)"
+    "TPM Ready: $($TPM.TpmReady)"
+    "Secure Boot Enabled: $SecureBoot"
+    ""
+    "Firewall Profiles:"
+    $Firewall | Select-Object Name, Enabled, DefaultInboundAction, DefaultOutboundAction
+    ""
+    "Password Policy:"
+    net accounts
 }
 
 # Summary file
@@ -356,23 +304,26 @@ Computer: $ComputerName
 Date: $(Get-Date)
 Report Folder: $ReportFolder
 
-Useful files to review first:
+Review these first:
 1. 01_Computer_Info.csv
 2. 07_Local_Users.csv
 3. 08_Local_Admins.txt
-4. 09_BitLocker_Status.txt
-5. 10_Defender_Status.csv
-6. 11_Firewall_Profiles.csv
-7. 12_RDP_Status.csv
-8. 13_Installed_Software.csv
-9. 15_IP_DNS_Gateway.txt
-10. 20_Windows11_Compatibility_Clues.csv
-11. 22_Windows_Update_Status.txt
-12. 24_Listening_Ports.csv
+4. 08A_Local_Admin_Count.csv
+5. 09_Password_Policy.txt
+6. 10_BitLocker_Status.txt
+7. 11_Defender_Status.csv
+8. 12_Firewall_Profiles.csv
+9. 13_RDP_Status.csv
+10. 14_Installed_Software.csv
+11. 16_IP_DNS_Gateway.txt
+12. 21_Windows11_Compatibility_Clues.csv
+13. 23_Windows_Update_Status.txt
+14. 24_Windows_Activation_Status.csv
+15. 32_Quick_Risk_Summary.txt
 
 Router note:
 PowerShell usually cannot perfectly identify router brand from a client PC.
-This script checks the default gateway, ARP table, and gateway web headers.
+This script checks default gateway, ARP table, and gateway web headers.
 For real router identification, physically inspect the router/firewall or log into the admin interface with permission.
 
 This script is read-only and does not intentionally change system settings.
