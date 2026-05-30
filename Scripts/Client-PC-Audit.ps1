@@ -317,7 +317,128 @@ Save-Text "32_Quick_Risk_Summary.txt" {
     "Password Policy:"
     net accounts
 }
+# 33 Executive Findings Generator
+Save-Text "33_Executive_Findings.txt" {
+    $Findings = @()
 
+    # Password policy
+    $NetAccounts = net accounts
+    $MinPasswordLengthLine = $NetAccounts | Where-Object { $_ -match "Minimum password length" }
+    $MinPasswordLength = ($MinPasswordLengthLine -replace "\D+", "")
+
+    if ([int]$MinPasswordLength -lt 12) {
+        $Findings += [PSCustomObject]@{
+            Severity = "HIGH"
+            Finding = "Weak password policy"
+            Evidence = "Minimum password length is $MinPasswordLength"
+            Recommendation = "Set minimum password length to 12-14 characters."
+        }
+    }
+
+    # Local admins
+    $Admins = Get-LocalGroupMember Administrators
+    if ($Admins.Count -gt 3) {
+        $Findings += [PSCustomObject]@{
+            Severity = "MEDIUM"
+            Finding = "Too many local administrators"
+            Evidence = "$($Admins.Count) local admin accounts found"
+            Recommendation = "Limit local administrator access to required IT/admin accounts only."
+        }
+    }
+
+    # RDP
+    $RDP = Get-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server'
+    if ($RDP.fDenyTSConnections -eq 0) {
+        $Findings += [PSCustomObject]@{
+            Severity = "MEDIUM"
+            Finding = "Remote Desktop is enabled"
+            Evidence = "RDP connections are allowed"
+            Recommendation = "Disable RDP unless required. If required, restrict access and avoid exposing it to the internet."
+        }
+    }
+
+    # Defender
+    $Defender = Get-MpComputerStatus
+    if ($Defender.AntivirusEnabled -ne $true -or $Defender.RealTimeProtectionEnabled -ne $true) {
+        $Findings += [PSCustomObject]@{
+            Severity = "HIGH"
+            Finding = "Microsoft Defender protection issue"
+            Evidence = "AntivirusEnabled=$($Defender.AntivirusEnabled), RealTimeProtectionEnabled=$($Defender.RealTimeProtectionEnabled)"
+            Recommendation = "Enable antivirus and real-time protection."
+        }
+    }
+
+    # Firewall
+    $FirewallProfiles = Get-NetFirewallProfile
+    foreach ($Profile in $FirewallProfiles) {
+        if ($Profile.Enabled -ne $true) {
+            $Findings += [PSCustomObject]@{
+                Severity = "HIGH"
+                Finding = "Windows Firewall disabled"
+                Evidence = "$($Profile.Name) firewall profile is disabled"
+                Recommendation = "Enable Windows Firewall on all profiles."
+            }
+        }
+    }
+
+    # BitLocker
+    try {
+        $BitLocker = Get-BitLockerVolume -MountPoint "C:" -ErrorAction Stop
+        if ($BitLocker.ProtectionStatus -ne "On") {
+            $Findings += [PSCustomObject]@{
+                Severity = "HIGH"
+                Finding = "BitLocker protection is not enabled"
+                Evidence = "C: ProtectionStatus=$($BitLocker.ProtectionStatus)"
+                Recommendation = "Enable BitLocker on business workstations."
+            }
+        }
+    }
+    catch {
+        $Findings += [PSCustomObject]@{
+            Severity = "MEDIUM"
+            Finding = "BitLocker status could not be verified"
+            Evidence = $_.Exception.Message
+            Recommendation = "Manually verify drive encryption status."
+        }
+    }
+
+    # Secure Boot
+    try {
+        $SecureBoot = Confirm-SecureBootUEFI -ErrorAction Stop
+        if ($SecureBoot -ne $true) {
+            $Findings += [PSCustomObject]@{
+                Severity = "MEDIUM"
+                Finding = "Secure Boot is disabled"
+                Evidence = "Confirm-SecureBootUEFI returned False"
+                Recommendation = "Enable Secure Boot in BIOS/UEFI where supported."
+            }
+        }
+    }
+    catch {
+        $Findings += [PSCustomObject]@{
+            Severity = "LOW"
+            Finding = "Secure Boot status could not be verified"
+            Evidence = $_.Exception.Message
+            Recommendation = "Manually verify Secure Boot status in BIOS/UEFI."
+        }
+    }
+
+    if ($Findings.Count -eq 0) {
+        "No major automated findings detected."
+    }
+    else {
+        "Executive Findings"
+        "=================="
+        ""
+        foreach ($Finding in $Findings) {
+            "Severity: $($Finding.Severity)"
+            "Finding: $($Finding.Finding)"
+            "Evidence: $($Finding.Evidence)"
+            "Recommendation: $($Finding.Recommendation)"
+            ""
+        }
+    }
+}
 # Summary file
 $SummaryPath = Join-Path $ReportFolder "00_READ_ME_Summary.txt"
 
