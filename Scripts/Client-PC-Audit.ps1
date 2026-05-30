@@ -83,7 +83,25 @@ Save-Text "09_Password_Policy.txt" {
 
 # 10 BitLocker
 Save-Text "10_BitLocker_Status.txt" {
-    manage-bde -status
+    try {
+        Get-BitLockerVolume -ErrorAction Stop |
+        Select-Object MountPoint, VolumeStatus, ProtectionStatus, EncryptionPercentage, EncryptionMethod, LockStatus
+    }
+    catch {
+        "Get-BitLockerVolume failed: $($_.Exception.Message)"
+        ""
+        "Trying manage-bde fallback..."
+        ""
+
+        try {
+            manage-bde -status
+        }
+        catch {
+            "manage-bde also failed: $($_.Exception.Message)"
+            ""
+            "BitLocker status unavailable. Try running PowerShell as Administrator."
+        }
+    }
 }
 
 # 11 Defender
@@ -171,7 +189,13 @@ Save-Text "20_Router_Brand_Clues.txt" {
 
 # 21 Windows 11 compatibility clues
 Save-Csv "21_Windows11_Compatibility_Clues.csv" {
-    $TPM = Get-Tpm
+try {
+    $TPM = Get-Tpm -ErrorAction Stop
+}
+catch {
+    $TPM = $null
+}
+
     $CPU = Get-CimInstance Win32_Processor | Select-Object -First 1
     $RAM = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2)
     $Disk = Get-CimInstance Win32_DiskDrive | Select-Object -First 1
@@ -184,10 +208,10 @@ Save-Csv "21_Windows11_Compatibility_Clues.csv" {
         CPU_Cores = $CPU.NumberOfCores
         RAM_GB = $RAM
         Disk_Size_GB = [math]::Round($Disk.Size / 1GB, 2)
-        TPM_Present = $TPM.TpmPresent
-        TPM_Ready = $TPM.TpmReady
-        TPM_Enabled = $TPM.TpmEnabled
-        TPM_Activated = $TPM.TpmActivated
+       TPM_Present = if ($TPM) { $TPM.TpmPresent } else { "Unknown" }
+TPM_Ready = if ($TPM) { $TPM.TpmReady } else { "Unknown" }
+TPM_Enabled = if ($TPM) { $TPM.TpmEnabled } else { "Unknown" }
+TPM_Activated = if ($TPM) { $TPM.TpmActivated } else { "Unknown" }
         SecureBoot_Enabled = $SecureBoot
         Firmware_Type = (Get-ComputerInfo).BiosFirmwareType
         OS_Architecture = (Get-ComputerInfo).OsArchitecture
