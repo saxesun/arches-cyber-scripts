@@ -1,5 +1,0 @@
-cd "$env:USERPROFILE\Desktop\ArchesCyber"
-
-git add .
-git commit -m "Updated client audit script"
-git push
