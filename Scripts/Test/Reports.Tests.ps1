@@ -1,5 +1,6 @@
 $root = Split-Path -Parent $PSScriptRoot
 Import-Module (Join-Path $root 'Modules\Results.psm1') -Force
+Import-Module (Join-Path $root 'Modules\Scoring.psm1') -Force
 Import-Module (Join-Path $root 'Modules\Reports.psm1') -Force
 
 Describe 'Arches report export' {

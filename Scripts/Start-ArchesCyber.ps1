@@ -8,7 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $moduleRoot = Join-Path $PSScriptRoot 'Modules'
-@('Logging.psm1','Results.psm1','Diagnostics.psm1','Reports.psm1') | ForEach-Object {
+@('Logging.psm1','Results.psm1','Diagnostics.psm1','Scoring.psm1','Reports.psm1') | ForEach-Object {
     Import-Module (Join-Path $moduleRoot $_) -Force -ErrorAction Stop
 }
 
