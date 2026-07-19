@@ -2,6 +2,11 @@
 # Read-only workstation assessment script
 # Run as Administrator
 
+[CmdletBinding()]
+param(
+    [switch]$InteractiveDiagnostics
+)
+
 $TimeStamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
 $ComputerName = $env:COMPUTERNAME
 
@@ -81,6 +86,10 @@ function Run-VoipDiagnostics {
     Write-Host "`n=== VoIP Diagnostics ==="
 
     $SipHost = Read-Host "Enter SIP/PBX host, example sip.provider.com"
+    if ([string]::IsNullOrWhiteSpace($SipHost)) {
+        Write-Host "No SIP/PBX host entered. Returning to the diagnostics menu."
+        return
+    }
 
     $Ports = @(5060, 5061, 5080, 5090, 3478)
 
@@ -138,7 +147,17 @@ function Run-BlockPathTrace {
     Write-Host "`n=== Block Path Trace ==="
 
     $TargetHost = Read-Host "Enter target host"
-    $Port = Read-Host "Enter target TCP port"
+    if ([string]::IsNullOrWhiteSpace($TargetHost)) {
+        Write-Host "No target host entered. Returning to the diagnostics menu."
+        return
+    }
+
+    $PortText = Read-Host "Enter target TCP port"
+    $Port = 0
+    if (-not [int]::TryParse($PortText, [ref]$Port) -or $Port -lt 1 -or $Port -gt 65535) {
+        Write-Host "Enter a valid TCP port from 1 through 65535."
+        return
+    }
 
     Write-Host "`nDNS Resolution:"
     Resolve-DnsName $TargetHost -ErrorAction SilentlyContinue
@@ -150,7 +169,7 @@ function Run-BlockPathTrace {
     tracert $TargetHost
 
     Write-Host "`nTCP Port Test:"
-    Test-NetConnection $TargetHost -Port $Port -TraceRoute
+    Test-NetConnection $TargetHost -Port $Port -InformationLevel Detailed
 
     Write-Host "`nWindows Firewall Allow Rules:"
     Get-NetFirewallRule -Enabled True -Action Allow |
@@ -634,8 +653,10 @@ Save-Text "32G_Block_Path_Trace.txt" {
         "Target: $($Target.Name) - $($Target.Host):$($Target.Port)"
         "DNS:"
         Resolve-DnsName $Target.Host -ErrorAction SilentlyContinue
-        "TCP/Trace Test:"
-        Test-NetConnection $Target.Host -Port $Target.Port -TraceRoute -InformationLevel Detailed
+        "Trace Route:"
+        Test-NetConnection $Target.Host -TraceRoute -InformationLevel Detailed
+        "TCP Port Test:"
+        Test-NetConnection $Target.Host -Port $Target.Port -InformationLevel Detailed
         ""
     }
 
@@ -1140,23 +1161,25 @@ catch {
     Write-Host $CopyError -ForegroundColor Yellow
 }
 
-do {
-    Show-DiagnosticsMenu
-    $choice = Read-Host "Choose an option"
+if ($InteractiveDiagnostics) {
+    do {
+        Show-DiagnosticsMenu
+        $choice = Read-Host "Choose an option"
 
-    switch ($choice) {
-        "1" { Run-NetworkDiagnostics }
-        "2" { Run-DnsDiagnostics }
-        "3" { Run-StaticIpDiagnostics }
-        "4" { Run-DhcpLeaseCheck }
-        "5" { Run-VoipDiagnostics }
-        "6" { Run-AllowlistChecker }
-        "7" { Run-BlockPathTrace }
-        "8" { Run-WindowsHealthDiagnostics }
-        "9" { Write-Host "Exiting diagnostics." }
-        default { Write-Host "Invalid option." }
-    }
-} while ($choice -ne "9")
+        switch ($choice) {
+            "1" { Run-NetworkDiagnostics }
+            "2" { Run-DnsDiagnostics }
+            "3" { Run-StaticIpDiagnostics }
+            "4" { Run-DhcpLeaseCheck }
+            "5" { Run-VoipDiagnostics }
+            "6" { Run-AllowlistChecker }
+            "7" { Run-BlockPathTrace }
+            "8" { Run-WindowsHealthDiagnostics }
+            "9" { Write-Host "Exiting diagnostics." }
+            default { Write-Host "Invalid option." }
+        }
+    } while ($choice -ne "9")
+}
 
 
 Write-Host ""

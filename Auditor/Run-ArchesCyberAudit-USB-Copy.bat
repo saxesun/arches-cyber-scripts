@@ -5,15 +5,26 @@ setlocal EnableExtensions
 :: Place this BAT in the same folder as the PS1, or put the PS1 in a resources folder.
 
 set "LAUNCHER_DIR=%~dp0"
-set "SCRIPT=%LAUNCHER_DIR%Client-PC-Audit-Diagnostics-Report.ps1"
+set "SCRIPT=%LAUNCHER_DIR%..\Scripts\Client-PC-Audit.ps1"
+set "SCRIPT_ARGS=-InteractiveDiagnostics"
 
 if not exist "%SCRIPT%" (
-    set "SCRIPT=%LAUNCHER_DIR%resources\Client-PC-Audit-Diagnostics-Report.ps1"
+    set "SCRIPT=%LAUNCHER_DIR%resources\Client-PC-Audit.ps1"
 )
 
 if not exist "%SCRIPT%" (
-    echo ERROR: Could not find Client-PC-Audit-Diagnostics-Report.ps1
-    echo Put the PS1 next to this BAT or inside a resources folder.
+    set "SCRIPT=%LAUNCHER_DIR%Client-PC-Audit.ps1"
+)
+
+if not exist "%SCRIPT%" (
+    set "SCRIPT=%LAUNCHER_DIR%Client-PC-Audit-ArchesCyberAudit-USB-Copy.ps1"
+    set "SCRIPT_ARGS="
+)
+
+if not exist "%SCRIPT%" (
+    echo ERROR: Could not find the Arches Cyber audit PowerShell script.
+    echo Keep the repository folders together, or put Client-PC-Audit.ps1
+    echo next to this BAT or inside a resources folder.
     pause
     exit /b 1
 )
@@ -30,7 +41,7 @@ echo Running Arches Cyber Audit...
 echo Script: %SCRIPT%
 echo.
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%" %SCRIPT_ARGS%
 
 set "EXITCODE=%ERRORLEVEL%"
 echo.
