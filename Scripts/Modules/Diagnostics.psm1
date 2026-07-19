@@ -122,6 +122,44 @@ function Get-ArchesSystemDiagnostics {
     $results
 }
 
+function Get-ArchesConnectedDeviceDiagnostics {
+    $results = @()
+    $results += Invoke-ArchesDiagnostic 'DEV-ARP-001' 'Connected Devices' 'Neighbor table visibility' {
+        $neighbors = @(Get-NetNeighbor -AddressFamily IPv4 -ErrorAction Stop | Where-Object {
+            $_.State -notin @('Unreachable','Incomplete') -and $_.IPAddress -notmatch '^(224|239)\.'
+        })
+        New-ArchesResult -Id 'DEV-ARP-001' -Category 'Connected Devices' -Title 'Neighbor table visibility' -Status Pass `
+            -Summary "$($neighbors.Count) active or recently observed IPv4 neighbor(s) found." `
+            -Evidence @($neighbors | Select-Object InterfaceAlias,IPAddress,LinkLayerAddress,State)
+    }
+    $results
+}
+
+function Get-ArchesPerformanceDiagnostics {
+    $results = @()
+    $results += Invoke-ArchesDiagnostic 'PERF-MEM-001' 'Performance' 'Available memory' {
+        $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+        $percentAvailable = [math]::Round(($os.FreePhysicalMemory / $os.TotalVisibleMemorySize) * 100, 1)
+        if ($percentAvailable -lt 10) {
+            New-ArchesResult -Id 'PERF-MEM-001' -Category Performance -Title 'Available memory' -Status Fail -Severity High -Summary "Only $percentAvailable% memory is currently available." -Evidence $os -Recommendation 'Identify memory-heavy processes and evaluate whether the system needs more RAM.'
+        } elseif ($percentAvailable -lt 20) {
+            New-ArchesResult -Id 'PERF-MEM-001' -Category Performance -Title 'Available memory' -Status Warning -Severity Medium -Summary "$percentAvailable% memory is currently available." -Evidence $os -Recommendation 'Review memory pressure and high-usage processes.'
+        } else {
+            New-ArchesResult -Id 'PERF-MEM-001' -Category Performance -Title 'Available memory' -Status Pass -Summary "$percentAvailable% memory is currently available." -Evidence $os
+        }
+    }
+    $results += Invoke-ArchesDiagnostic 'PERF-CPU-001' 'Performance' 'Processor utilization' {
+        $samples = @(Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object -ExpandProperty LoadPercentage)
+        $average = if ($samples.Count) { [math]::Round(($samples | Measure-Object -Average).Average, 1) } else { 0 }
+        if ($average -ge 90) {
+            New-ArchesResult -Id 'PERF-CPU-001' -Category Performance -Title 'Processor utilization' -Status Warning -Severity Medium -Summary "Processor load is currently $average%." -Evidence $samples -Recommendation 'Review sustained CPU use in Task Manager before taking corrective action.'
+        } else {
+            New-ArchesResult -Id 'PERF-CPU-001' -Category Performance -Title 'Processor utilization' -Status Pass -Summary "Processor load is currently $average%." -Evidence $samples
+        }
+    }
+    $results
+}
+
 function Invoke-ArchesFullScan {
     [CmdletBinding()]
     param()
@@ -129,7 +167,9 @@ function Invoke-ArchesFullScan {
         Get-ArchesSecurityDiagnostics
         Get-ArchesNetworkDiagnostics
         Get-ArchesSystemDiagnostics
+        Get-ArchesConnectedDeviceDiagnostics
+        Get-ArchesPerformanceDiagnostics
     ) | Sort-ArchesResults
 }
 
-Export-ModuleMember -Function Test-ArchesAdministrator, Get-ArchesSecurityDiagnostics, Get-ArchesNetworkDiagnostics, Get-ArchesSystemDiagnostics, Invoke-ArchesFullScan
+Export-ModuleMember -Function Test-ArchesAdministrator, Get-ArchesSecurityDiagnostics, Get-ArchesNetworkDiagnostics, Get-ArchesSystemDiagnostics, Get-ArchesConnectedDeviceDiagnostics, Get-ArchesPerformanceDiagnostics, Invoke-ArchesFullScan

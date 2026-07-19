@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Full','Security','Network','System')][string]$Scan = 'Full',
+    [ValidateSet('Full','Security','Network','System','Devices','Performance')][string]$Scan = 'Full',
     [string]$OutputDirectory = (Join-Path $env:USERPROFILE 'Desktop\ArchesCyberAudit'),
     [switch]$ProblemsOnly,
     [switch]$NoOpenReport
@@ -21,6 +21,8 @@ try {
         'Security' { @(Get-ArchesSecurityDiagnostics) }
         'Network'  { @(Get-ArchesNetworkDiagnostics) }
         'System'   { @(Get-ArchesSystemDiagnostics) }
+        'Devices'  { @(Get-ArchesConnectedDeviceDiagnostics) }
+        'Performance' { @(Get-ArchesPerformanceDiagnostics) }
         default    { @(Invoke-ArchesFullScan) }
     }
     if ($ProblemsOnly) { $displayResults = @($results | Get-ArchesProblems) } else { $displayResults = @($results | Sort-ArchesResults) }

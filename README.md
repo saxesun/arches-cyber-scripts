@@ -10,7 +10,7 @@ Open Windows PowerShell as Administrator and run:
 .\Scripts\Start-ArchesCyber.ps1
 ```
 
-Focused scans are available with `-Scan Security`, `-Scan Network`, or `-Scan System`. Use `-ProblemsOnly` for the simplified console view and `-NoOpenReport` for unattended execution.
+Focused scans are available with `-Scan Security`, `Network`, `System`, `Devices`, or `Performance`. Use `-ProblemsOnly` for the simplified console view and `-NoOpenReport` for unattended execution. On Windows, `Run-ArchesCyber.bat` provides an elevated double-click launcher.
 
 Reports are written to `Desktop\ArchesCyberAudit` as HTML, JSON, and CSV. Diagnostic operations are read-only. Guided remediation and rollback remain under development and are not enabled by this entry point.
 
