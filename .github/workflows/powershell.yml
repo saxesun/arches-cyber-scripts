@@ -1,0 +1,22 @@
+name: PowerShell validation
+
+on:
+  push:
+    branches: [main, diagnostics-module]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Pester
+        shell: powershell
+        run: Install-Module Pester -MinimumVersion 5.5.0 -Scope CurrentUser -Force -SkipPublisherCheck
+      - name: Parse and test project
+        shell: powershell
+        run: .\Scripts\Test\Test-Project.ps1 -RunPester

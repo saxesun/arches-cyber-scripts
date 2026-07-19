@@ -1,3 +1,8 @@
-ClientReports/
-ClientData/
-*.bak
+Scripts/Logs/
+Scripts/Rollback/
+Reports/
+CollectedReports/
+*.log
+*.zip
+.DS_Store
+Thumbs.db
