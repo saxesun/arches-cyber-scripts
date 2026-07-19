@@ -119,6 +119,33 @@ function Get-ArchesSystemDiagnostics {
             New-ArchesResult -Id 'SYS-BOOT-001' -Category Performance -Title 'Time since restart' -Status Pass -Summary "Last restart was $days day(s) ago." -Evidence $os.LastBootUpTime
         }
     }
+    $results += Invoke-ArchesDiagnostic 'SYS-UPD-001' 'Security' 'Windows Update service' {
+        $service = Get-Service -Name wuauserv -ErrorAction Stop
+        if ($service.StartType -eq 'Disabled') {
+            New-ArchesResult -Id 'SYS-UPD-001' -Category Security -Title 'Windows Update service' -Status Fail -Severity High -Summary 'The Windows Update service is disabled.' -Evidence $service -Recommendation 'Review update management policy and enable Windows Update when it is not controlled by another approved tool.'
+        } elseif ($service.Status -ne 'Running') {
+            New-ArchesResult -Id 'SYS-UPD-001' -Category Security -Title 'Windows Update service' -Status Warning -Severity Low -Summary "The Windows Update service is $($service.Status)." -Evidence $service -Recommendation 'Confirm the service can start when Windows checks for updates.'
+        } else {
+            New-ArchesResult -Id 'SYS-UPD-001' -Category Security -Title 'Windows Update service' -Status Pass -Summary 'The Windows Update service is running.' -Evidence $service
+        }
+    }
+    $results += Invoke-ArchesDiagnostic 'SYS-W11-001' 'Hardware' 'Windows 11 readiness clues' {
+        $system = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop
+        $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+        $cpu = Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object -First 1
+        $systemDisk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$env:SystemDrive'" -ErrorAction Stop
+        $tpm = try { Get-Tpm -ErrorAction Stop } catch { $null }
+        $ramGb = [math]::Round($system.TotalPhysicalMemory / 1GB, 1)
+        $diskGb = [math]::Round($systemDisk.Size / 1GB, 1)
+        $basicReady = $cpu.NumberOfCores -ge 2 -and $ramGb -ge 4 -and $diskGb -ge 64 -and $os.OSArchitecture -match '64'
+        $tpmReady = $tpm -and $tpm.TpmPresent -and $tpm.TpmReady
+        $evidence = [PSCustomObject]@{ CPU=$cpu.Name; Cores=$cpu.NumberOfCores; RAM_GB=$ramGb; SystemDisk_GB=$diskGb; Architecture=$os.OSArchitecture; TPM_Present=if($tpm){$tpm.TpmPresent}else{$null}; TPM_Ready=if($tpm){$tpm.TpmReady}else{$null} }
+        if ($basicReady -and $tpmReady) {
+            New-ArchesResult -Id 'SYS-W11-001' -Category Hardware -Title 'Windows 11 readiness clues' -Status Pass -Summary 'Basic hardware and TPM readiness clues meet the minimums checked.' -Evidence $evidence
+        } else {
+            New-ArchesResult -Id 'SYS-W11-001' -Category Hardware -Title 'Windows 11 readiness clues' -Status Warning -Severity Medium -Summary 'One or more basic Windows 11 readiness clues did not meet the checked minimums.' -Evidence $evidence -Recommendation 'Use Microsoft PC Health Check for the authoritative CPU model and compatibility decision.'
+        }
+    }
     $results
 }
 
