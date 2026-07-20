@@ -3,7 +3,11 @@ param([switch]$RunPester)
 
 $projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $errorsFound = @()
-Get-ChildItem -LiteralPath $projectRoot -Recurse -Include '*.ps1','*.psm1' -File | ForEach-Object {
+$powerShellFiles = Get-ChildItem -LiteralPath $projectRoot -Recurse -File | Where-Object {
+    $_.Extension -in @('.ps1', '.psm1')
+}
+
+$powerShellFiles | ForEach-Object {
     $tokens = $null
     $parseErrors = $null
     [void][Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$parseErrors)
