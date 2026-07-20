@@ -24,10 +24,10 @@ Fixes are separate from scanning. Read-only preflight displays an exact structur
 
 ```powershell
 .\Scripts\Invoke-ArchesFix.ps1 -Id FIX-FW-001 -WhatIf
-.\Scripts\Invoke-ArchesFix.ps1 -Id FIX-FW-001 -Approved
+.\Scripts\Invoke-ArchesFix.ps1 -Id FIX-FW-001 -ManagementOwnershipAttested -Approved
 ```
 
-`-Approved` is not required for `-WhatIf`. Execution rechecks the planned baseline and refuses stale plans.
+`-Approved` is not required for `-WhatIf`. Firewall execution also requires `-ManagementOwnershipAttested` after the technician confirms no unsupported management product owns firewall policy. Attestation cannot override detected or unknown management. Execution rechecks the planned baseline and refuses stale plans.
 
 Firewall changes create a JSON rollback record before changing state. The project intentionally does not offer static-IP-to-DHCP conversion or broad network resets in Phase 1.
 

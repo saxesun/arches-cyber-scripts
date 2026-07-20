@@ -160,7 +160,7 @@ Prohibited in rollback and remediation code:
 
 | ID | Action | Tier | Reversible | Required safety gap before broader use |
 |---|---|---|---:|---|
-| `FIX-FW-001` | Enable disabled Domain, Private, or Public firewall profiles | ConfigOnly | Yes | Implemented: refuse domain membership, Group Policy firewall keys, active MDM enrollment, or unknown ownership |
+| `FIX-FW-001` | Enable disabled Domain, Private, or Public firewall profiles | ConfigOnly | Yes | Refuse detected domain, Group Policy, MDM/Entra, approved RMM, or third-party security ownership; require technician attestation when supported signals are clear because unknown vendors cannot be excluded |
 | `FIX-DNS-001` | Flush DNS resolver cache | ConfigOnly | No | Explain that previous cache contents cannot be restored |
 
 Additional candidates remain unapproved until individually reviewed against this policy. Reliability takes precedence over catalog size.
@@ -170,3 +170,5 @@ Additional candidates remain unapproved until individually reviewed against this
 Automated tests must mock configuration-changing Windows commands and cover approval, `WhatIf`, validation rejection, exact restoration, verification failure, state transitions, and combined failure reporting.
 
 Real Windows 11 VM testing must exercise every approved remediation and undo path, management-policy conflicts, tampered records, reboot behavior where relevant, and verification that unrelated settings remain unchanged.
+
+Firewall ownership detection is deliberately described as `Managed`, `SupportedSignalsClear`, or `Unknown`; it never claims that a computer is definitively unmanaged. Supported signals include domain membership, firewall Group Policy, MDM/OMADM and Entra join registry state, an approved list of common RMM service patterns, and Security Center third-party antivirus registration. A clear supported-signal scan still requires explicit technician attestation that no unsupported management owner controls the setting. Attestation cannot override a detected or unknown state.

@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory)][ValidateSet('FIX-FW-001','FIX-DNS-001')][string]$Id,
     [switch]$Approved,
+    [switch]$ManagementOwnershipAttested,
     [switch]$ExternalProtectionConfirmed
 )
 
@@ -10,7 +11,8 @@ $moduleRoot = Join-Path $PSScriptRoot 'Modules'
     Import-Module (Join-Path $moduleRoot $_) -Force -ErrorAction Stop
 }
 $rollbackDirectory = Join-Path $PSScriptRoot 'Rollback'
-$plan = New-ArchesRemediationPlan -Id $Id
+$plan = New-ArchesRemediationPlan -Id $Id `
+    -ManagementOwnershipAttested:$ManagementOwnershipAttested
 Show-ArchesRemediationPlan -Plan $plan
 Invoke-ArchesRemediation -Plan $plan -RollbackDirectory $rollbackDirectory `
     -Approved:$Approved -ExternalProtectionConfirmed:$ExternalProtectionConfirmed `

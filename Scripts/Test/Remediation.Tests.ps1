@@ -17,6 +17,11 @@ Describe 'Tiered remediation protection' {
                 param([string]$ClassName, [string]$ErrorAction)
             }
         }
+        if (-not (Get-Command Get-Service -ErrorAction SilentlyContinue)) {
+            function global:Get-Service {
+                param([string]$ErrorAction)
+            }
+        }
     }
 
     BeforeEach {
@@ -33,8 +38,9 @@ Describe 'Tiered remediation protection' {
         $script:sawPendingBeforeChange = $false
         Mock Test-ArchesAdministrator -ModuleName Remediation { $true }
         Mock Get-ArchesFirewallManagementState -ModuleName Remediation {
-            [PSCustomObject]@{ Status = 'Unmanaged'; Signals = @(); Details = 'Unmanaged test system.' }
+            [PSCustomObject]@{ Status = 'SupportedSignalsClear'; Signals = @(); Details = 'Supported signals clear.' }
         }
+        Mock Get-Service -ModuleName Remediation { @() }
         Mock Get-ArchesFirewallProfileState -ModuleName Remediation {
             if ($Profile) {
                 return @($Profile | ForEach-Object {
@@ -68,7 +74,7 @@ Describe 'Tiered remediation protection' {
     }
 
     It 'creates Pending firewall data before changing and marks Applied after verification' {
-        $plan = New-ArchesRemediationPlan -Id FIX-FW-001
+        $plan = New-ArchesRemediationPlan -Id FIX-FW-001 -ManagementOwnershipAttested
         $result = Invoke-ArchesRemediation -Plan $plan -RollbackDirectory $TestDrive `
             -Approved -Confirm:$false
         $script:sawPendingBeforeChange | Should -BeTrue
@@ -91,13 +97,13 @@ Describe 'Tiered remediation protection' {
     }
 
     It 'requires approval before remediation' {
-        $plan = New-ArchesRemediationPlan -Id FIX-FW-001
+        $plan = New-ArchesRemediationPlan -Id FIX-FW-001 -ManagementOwnershipAttested
         { Invoke-ArchesRemediation -Plan $plan -RollbackDirectory $TestDrive -Confirm:$false } |
             Should -Throw '*explicit approval*'
     }
 
     It 'previews the exact plan without calling a change handler or requiring approval' {
-        $plan = New-ArchesRemediationPlan -Id FIX-FW-001
+        $plan = New-ArchesRemediationPlan -Id FIX-FW-001 -ManagementOwnershipAttested
 
         $preview = Invoke-ArchesRemediation -Plan $plan -RollbackDirectory $TestDrive `
             -WhatIf -Confirm:$false
@@ -108,7 +114,7 @@ Describe 'Tiered remediation protection' {
     }
 
     It 'executes only the changes displayed in the plan' {
-        $plan = New-ArchesRemediationPlan -Id FIX-FW-001
+        $plan = New-ArchesRemediationPlan -Id FIX-FW-001 -ManagementOwnershipAttested
 
         Invoke-ArchesRemediation -Plan $plan -RollbackDirectory $TestDrive `
             -Approved -Confirm:$false | Out-Null
@@ -122,7 +128,7 @@ Describe 'Tiered remediation protection' {
     }
 
     It 'fails before changing anything when firewall state changes after planning' {
-        $plan = New-ArchesRemediationPlan -Id FIX-FW-001
+        $plan = New-ArchesRemediationPlan -Id FIX-FW-001 -ManagementOwnershipAttested
         $script:firewallState.Private = $false
 
         {
@@ -132,22 +138,31 @@ Describe 'Tiered remediation protection' {
         Should -Invoke -CommandName Set-ArchesFirewallProfileState -ModuleName Remediation -Times 0 -Exactly
     }
 
-    It 'detects an unmanaged firewall ownership state' {
+    It 'reports only that supported ownership signals are clear' {
         Mock Get-CimInstance -ModuleName Remediation {
-            [PSCustomObject]@{ PartOfDomain = $false }
+            if ($ClassName -eq 'Win32_ComputerSystem') {
+                return [PSCustomObject]@{ PartOfDomain = $false }
+            }
+            @()
         }
         Mock Test-Path -ModuleName Remediation { $false }
+        Mock Get-Service -ModuleName Remediation { @() }
 
         $state = Get-ArchesFirewallManagementState
 
-        $state.Status | Should -Be 'Unmanaged'
+        $state.Status | Should -Be 'SupportedSignalsClear'
+        $state.Details | Should -Match 'Unsupported management products cannot be excluded'
     }
 
     It 'detects managed firewall ownership' {
         Mock Get-CimInstance -ModuleName Remediation {
-            [PSCustomObject]@{ PartOfDomain = $true }
+            if ($ClassName -eq 'Win32_ComputerSystem') {
+                return [PSCustomObject]@{ PartOfDomain = $true }
+            }
+            @()
         }
         Mock Test-Path -ModuleName Remediation { $false }
+        Mock Get-Service -ModuleName Remediation { @() }
 
         $state = Get-ArchesFirewallManagementState
 
@@ -171,6 +186,36 @@ Describe 'Tiered remediation protection' {
         $state.Details | Should -Match 'CIM unavailable'
     }
 
+    It 'detects approved RMM and third-party security ownership signals' {
+        Mock Get-CimInstance -ModuleName Remediation {
+            if ($ClassName -eq 'Win32_ComputerSystem') {
+                return [PSCustomObject]@{ PartOfDomain = $false }
+            }
+            [PSCustomObject]@{ displayName = 'Approved Third Party AV' }
+        }
+        Mock Test-Path -ModuleName Remediation { $false }
+        Mock Get-Service -ModuleName Remediation {
+            [PSCustomObject]@{ Name = 'NinjaRMMAgent'; DisplayName = 'Ninja RMM Agent' }
+        }
+
+        $state = Get-ArchesFirewallManagementState
+
+        $state.Status | Should -Be 'Managed'
+        ($state.Signals -join '|') | Should -Match 'RMM'
+        ($state.Signals -join '|') | Should -Match 'Third-party security'
+    }
+
+    It 'blocks unsupported ownership until technician attestation is present' {
+        $withoutAttestation = New-ArchesRemediationPlan -Id FIX-FW-001
+        $withAttestation = New-ArchesRemediationPlan -Id FIX-FW-001 `
+            -ManagementOwnershipAttested
+
+        $withoutAttestation.CanExecute | Should -BeFalse
+        $withoutAttestation.BlockReason | Should -Match 'attestation is required'
+        $withAttestation.CanExecute | Should -BeTrue
+        $withAttestation.ManagementOwnershipAttested | Should -BeTrue
+    }
+
     It 'refuses managed or unknown firewall ownership before reading or changing profiles' -TestCases @(
         @{ State = 'Managed'; Details = 'Group Policy firewall policy detected.' }
         @{ State = 'Unknown'; Details = 'Ownership detection failed.' }
@@ -181,7 +226,7 @@ Describe 'Tiered remediation protection' {
         }
 
         {
-            $plan = New-ArchesRemediationPlan -Id FIX-FW-001
+            $plan = New-ArchesRemediationPlan -Id FIX-FW-001 -ManagementOwnershipAttested
             Invoke-ArchesRemediation -Plan $plan -RollbackDirectory $TestDrive `
                 -Approved -Confirm:$false
         } | Should -Throw '*refused*No firewall settings were changed*'
@@ -191,7 +236,7 @@ Describe 'Tiered remediation protection' {
     It 'reports the application failure after targeted rollback succeeds' {
         Mock Set-ArchesFirewallProfileState -ModuleName Remediation { throw 'application exploded' }
         Mock Restore-ArchesRollback -ModuleName Remediation {}
-        $plan = New-ArchesRemediationPlan -Id FIX-FW-001
+        $plan = New-ArchesRemediationPlan -Id FIX-FW-001 -ManagementOwnershipAttested
         { Invoke-ArchesRemediation -Plan $plan -RollbackDirectory $TestDrive `
                 -Approved -Confirm:$false } |
             Should -Throw '*application exploded*Targeted rollback succeeded*'
@@ -200,7 +245,7 @@ Describe 'Tiered remediation protection' {
     It 'reports both application and targeted rollback failures' {
         Mock Set-ArchesFirewallProfileState -ModuleName Remediation { throw 'application exploded' }
         Mock Restore-ArchesRollback -ModuleName Remediation { throw 'rollback exploded' }
-        $plan = New-ArchesRemediationPlan -Id FIX-FW-001
+        $plan = New-ArchesRemediationPlan -Id FIX-FW-001 -ManagementOwnershipAttested
         { Invoke-ArchesRemediation -Plan $plan -RollbackDirectory $TestDrive `
                 -Approved -Confirm:$false } |
             Should -Throw '*application exploded*Targeted rollback also failed*rollback exploded*'

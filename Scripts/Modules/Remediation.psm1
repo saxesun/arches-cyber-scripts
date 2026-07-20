@@ -20,6 +20,7 @@ function Get-ArchesFirewallManagementState {
         $managedPolicyPaths = [ordered]@{
             'Group Policy firewall policy' = 'HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall'
             'MDM firewall policy' = 'HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Firewall'
+            'Microsoft Entra organization join' = 'HKLM:\SYSTEM\CurrentControlSet\Control\CloudDomainJoin\JoinInfo'
         }
         foreach ($signal in $managedPolicyPaths.Keys) {
             if (Test-Path -LiteralPath $managedPolicyPaths[$signal] -PathType Container -ErrorAction Stop) {
@@ -35,6 +36,29 @@ function Get-ArchesFirewallManagementState {
             }
         }
 
+        $rmmPatterns = @(
+            'ScreenConnect*', 'ConnectWise*', 'NinjaRMMAgent', 'NinjaRMMAgentPatcher',
+            'AteraAgent', 'Kaseya*', 'Datto*', 'SplashtopRemoteService',
+            'TacticalRMM*', 'Syncro*', 'HuntressAgent'
+        )
+        $services = @(Get-Service -ErrorAction Stop)
+        foreach ($service in $services) {
+            foreach ($pattern in $rmmPatterns) {
+                if ($service.Name -like $pattern -or $service.DisplayName -like $pattern) {
+                    $signals += "Approved RMM service pattern: $pattern"
+                    break
+                }
+            }
+        }
+
+        $securityProducts = @(Get-CimInstance -Namespace 'root/SecurityCenter2' `
+            -ClassName AntiVirusProduct -ErrorAction Stop)
+        foreach ($product in $securityProducts) {
+            if ($product.displayName -and $product.displayName -notmatch 'Microsoft Defender|Windows Defender') {
+                $signals += "Third-party security ownership: $($product.displayName)"
+            }
+        }
+
         if ($signals.Count) {
             return [PSCustomObject]@{
                 Status = 'Managed'
@@ -43,9 +67,9 @@ function Get-ArchesFirewallManagementState {
             }
         }
         [PSCustomObject]@{
-            Status = 'Unmanaged'
+            Status = 'SupportedSignalsClear'
             Signals = @()
-            Details = 'No domain membership, firewall policy registry keys, or active MDM enrollment were detected.'
+            Details = 'No supported domain, Group Policy, MDM, approved RMM, or third-party security ownership signal was detected. Unsupported management products cannot be excluded.'
         }
     }
     catch {
@@ -107,6 +131,7 @@ function Get-ArchesPlanDigest {
         Verification = $Plan.Verification
         OwnershipStatus = $Plan.OwnershipStatus
         OwnershipSignals = @($Plan.OwnershipSignals)
+        ManagementOwnershipAttested = $Plan.ManagementOwnershipAttested
         CanExecute = $Plan.CanExecute
         BlockReason = $Plan.BlockReason
         Baseline = @($Plan.Baseline)
@@ -126,7 +151,8 @@ function Get-ArchesPlanDigest {
 function New-ArchesRemediationPlan {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][ValidateSet('FIX-FW-001', 'FIX-DNS-001')][string]$Id
+        [Parameter(Mandatory)][ValidateSet('FIX-FW-001', 'FIX-DNS-001')][string]$Id,
+        [switch]$ManagementOwnershipAttested
     )
     $catalogItem = Get-ArchesRemediationCatalog | Where-Object Id -eq $Id
     if ($null -eq $catalogItem) {
@@ -143,7 +169,11 @@ function New-ArchesRemediationPlan {
         $managementState = Get-ArchesFirewallManagementState
         $ownershipStatus = $managementState.Status
         $ownershipSignals = @($managementState.Signals)
-        if ($managementState.Status -ne 'Unmanaged') {
+        if ($managementState.Status -eq 'SupportedSignalsClear' -and -not $ManagementOwnershipAttested) {
+            $canExecute = $false
+            $blockReason = 'Supported management signals are clear, but unsupported ownership cannot be excluded. Explicit technician attestation is required.'
+        }
+        elseif ($managementState.Status -ne 'SupportedSignalsClear') {
             $canExecute = $false
             $blockReason = $managementState.Details
         }
@@ -196,6 +226,7 @@ function New-ArchesRemediationPlan {
         Verification = $catalogItem.Verification
         OwnershipStatus = $ownershipStatus
         OwnershipSignals = @($ownershipSignals)
+        ManagementOwnershipAttested = [bool]$ManagementOwnershipAttested
         CanExecute = $canExecute
         BlockReason = $blockReason
         Baseline = @($baseline)
@@ -231,7 +262,7 @@ function Assert-ArchesRemediationPlan {
         'PlanVersion', 'Id', 'Title', 'Risk', 'RequiresAdmin', 'Privileges',
         'Disruption', 'Duration', 'ProtectionTier', 'Reversible', 'Verification',
         'OwnershipStatus', 'OwnershipSignals', 'CanExecute', 'BlockReason',
-        'Baseline', 'Changes', 'Digest'
+        'ManagementOwnershipAttested', 'Baseline', 'Changes', 'Digest'
     )
     $actual = @($Plan.PSObject.Properties.Name)
     if (@($expected | Where-Object { $_ -notin $actual }).Count -or
