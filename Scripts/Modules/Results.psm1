@@ -52,7 +52,7 @@ function Get-ArchesProblems {
     param([Parameter(ValueFromPipeline)][object[]]$Result)
     begin { $items = @() }
     process { $items += $Result }
-    end { $items | Where-Object { $_.Status -in @('Warning','Fail','Error','Unknown') } | Sort-ArchesResults }
+    end { $items | Where-Object { $_.Status -in @('Warning','Fail') } | Sort-ArchesResults }
 }
 
 Export-ModuleMember -Function New-ArchesResult, Get-ArchesSeverityRank, Sort-ArchesResults, Get-ArchesProblems

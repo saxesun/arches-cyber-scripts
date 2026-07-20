@@ -14,6 +14,18 @@ $rollbackDirectory = Join-Path $PSScriptRoot 'Rollback'
 $plan = New-ArchesRemediationPlan -Id $Id `
     -ManagementOwnershipAttested:$ManagementOwnershipAttested
 Show-ArchesRemediationPlan -Plan $plan
+$approvedAfterReview = $false
+if (-not $WhatIfPreference) {
+    if (-not $Approved) {
+        throw "Remediation $Id requires explicit approval after reviewing the displayed plan. Rerun with -Approved."
+    }
+    $confirmation = Read-Host "Type APPROVE to run only the exact change shown above"
+    $approvedAfterReview = $confirmation -ceq 'APPROVE'
+    if (-not $approvedAfterReview) {
+        Write-Host 'Remediation cancelled. No configuration changes were made.' -ForegroundColor Yellow
+        return
+    }
+}
 Invoke-ArchesRemediation -Plan $plan -RollbackDirectory $rollbackDirectory `
-    -Approved:$Approved -ExternalProtectionConfirmed:$ExternalProtectionConfirmed `
+    -Approved:$approvedAfterReview -ExternalProtectionConfirmed:$ExternalProtectionConfirmed `
     -WhatIf:$WhatIfPreference -Confirm:$false

@@ -16,7 +16,9 @@ Describe 'Arches result model' {
     It 'filters passing checks from problems' {
         $pass = New-ArchesResult -Id P -Category Test -Title Pass -Status Pass
         $fail = New-ArchesResult -Id F -Category Test -Title Fail -Status Fail -Severity High
-        $problems = @($pass,$fail) | Get-ArchesProblems
+        $unknown = New-ArchesResult -Id U -Category Test -Title Unknown -Status Unknown
+        $error = New-ArchesResult -Id E -Category Test -Title Error -Status Error
+        $problems = @($pass,$fail,$unknown,$error) | Get-ArchesProblems
         @($problems).Count | Should -Be 1
         $problems.Id | Should -Be 'F'
     }
