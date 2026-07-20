@@ -54,12 +54,7 @@ function Run-DnsDiagnostics {
     Get-DnsClientServerAddress
     Resolve-DnsName google.com -ErrorAction SilentlyContinue
     nslookup google.com
-
-    $fix = Read-Host "Flush DNS cache? Y/N"
-    if ($fix -eq "Y") {
-        ipconfig /flushdns
-        Restart-Service Dnscache -Force
-    }
+    Write-Host 'This legacy diagnostic is read-only. Use Invoke-ArchesFix.ps1 for an approved DNS cache flush.'
 }
 
 function Run-DhcpLeaseCheck {
@@ -204,15 +199,7 @@ function Run-WindowsHealthDiagnostics {
     Write-Host "`nDisk Health:"
     Get-PhysicalDisk | Select-Object FriendlyName, HealthStatus, OperationalStatus, Size
 
-    $repair = Read-Host "Run SFC scan? Y/N"
-    if ($repair -eq "Y") {
-        sfc /scannow
-    }
-
-    $dism = Read-Host "Run DISM ScanHealth? Y/N"
-    if ($dism -eq "Y") {
-        DISM /Online /Cleanup-Image /ScanHealth
-    }
+    Write-Host 'Legacy health diagnostics do not run SFC or DISM. Use an independently approved maintenance workflow.'
 }
 
 # 01 Basic computer info
@@ -690,7 +677,7 @@ Save-Text "32H_BSOD_Windows_Health_Diagnostics.txt" {
     "Disk Health:"
     Get-PhysicalDisk -ErrorAction SilentlyContinue | Select-Object FriendlyName, HealthStatus, OperationalStatus, Size
     ""
-    "Repair note: This audit does not automatically run SFC or DISM repairs. Use the interactive menu or run manually with client approval."
+    "Repair note: This legacy audit does not run SFC or DISM. Use an independently approved maintenance workflow."
 }
 
 # 32 Quick risk summary

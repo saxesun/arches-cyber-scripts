@@ -14,6 +14,8 @@ Focused scans are available with `-Scan Security`, `Network`, `System`, `Devices
 
 Reports are written to `Desktop\ArchesCyberAudit` as HTML, JSON, and CSV. Diagnostic operations are read-only. Guided remediation and rollback remain under development and are not enabled by this entry point.
 
+Legacy audit launchers retain their read-only diagnostic menus, but legacy DNS, service, SFC, and DISM mutation prompts are disabled. Operators must use the trusted `Invoke-ArchesFix.ps1` workflow for an available approved remediation.
+
 The Windows 11 readiness check reports hardware clues only. Microsoft PC Health Check remains the authoritative compatibility check because CPU model support cannot be determined reliably from core count and architecture alone.
 
 ## Guided fixes
