@@ -48,7 +48,7 @@ Every finding has:
 
 Duplicate finding IDs are rejected. Individual diagnostic failures are isolated. Missing Windows features, unsupported hardware, third-party controls, and management policy do not become security failures merely because a local command failed or a local setting differs.
 
-`Unknown` and `Error` describe confidence or execution state. Scoring must not automatically treat either as a confirmed security failure.
+`Unknown` and `Error` describe confidence or execution state and do not incur score penalties. A category containing only `Unknown` or `Error` results is rated `Not Scanned`; when confirmed checks are also present, uncertain results are counted separately without altering the confirmed-condition score.
 
 ## Diagnostic scope
 
@@ -200,7 +200,6 @@ Baseline reviewed on 2026-07-19 at `diagnostics-module` commit `e552450`.
 
 - Complete console output is currently the default; problems-only requires `-ProblemsOnly`.
 - The result model lacks business impact, explicit remediation availability, and richer technical/client separation.
-- `Error` currently receives the same full scoring penalty as `Fail`, conflicting with the rule that a failed check is not automatically a security failure.
 - The gateway check relies on ICMP and can report failure without a second signal.
 - Network calls do not have an explicit bounded-timeout policy.
 - Current diagnostics cover only part of the stated scope; third-party antivirus, update age, users, password policy, adapter addressing, latency/packet loss, listening processes, startup/service failures, and targeted device diagnostics remain incomplete in the modular Phase 1 path.
