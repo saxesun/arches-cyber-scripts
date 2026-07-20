@@ -84,6 +84,8 @@ Duplicate finding IDs are rejected. Individual diagnostic failures are isolated.
 
 Blocked ICMP alone does not prove a gateway or internet outage. Trace results describe observable hops only and do not claim to locate an ISP boundary perfectly.
 
+The modular gateway check uses one default-route lookup, neighbor resolution, exactly three ICMP samples bounded to one second each, and an independent TCP 443 attempt bounded to three seconds. DNS and standalone internet checks are also bounded to three seconds. Missing route or failure across independent local and external signals may be a confirmed failure; ICMP failure with working TCP is a warning, and partial, conflicting, or timed-out evidence is `Unknown`.
+
 ## Configuration
 
 `Scripts/Config/Phase1.json` is versioned and controls supported thresholds, retention, and safety options. The loader:
@@ -202,8 +204,6 @@ Baseline reviewed on 2026-07-19 at `diagnostics-module` commit `e552450`.
 
 - Complete console output is currently the default; problems-only requires `-ProblemsOnly`.
 - The result model lacks business impact, explicit remediation availability, and richer technical/client separation.
-- The gateway check relies on ICMP and can report failure without a second signal.
-- Network calls do not have an explicit bounded-timeout policy.
 - Current diagnostics cover only part of the stated scope; third-party antivirus, update age, users, password policy, adapter addressing, latency/packet loss, listening processes, startup/service failures, and targeted device diagnostics remain incomplete in the modular Phase 1 path.
 - Reports are files in one output directory, not a unique directory per run; they omit scan type, script version, elevation state, business impact, and clearly separated raw evidence.
 - Report/rollback retention settings are validated but automated scoped retention behavior is incomplete.

@@ -7,7 +7,7 @@ function Get-ArchesEvidenceAllowlist {
         'SEC-RDP-001' = @('RegistryValue')
         'SEC-BL-001' = @('MountPoint', 'VolumeStatus', 'ProtectionStatus', 'EncryptionPercentage')
         'SEC-ADM-001' = @('PrincipalCount')
-        'NET-GW-001' = @('NextHop', 'InterfaceAlias', 'RouteMetric')
+        'NET-GW-001' = @('RoutePresent', 'NextHop', 'InterfaceAlias', 'RouteMetric', 'NeighborResolved', 'IcmpSuccessCount', 'IcmpAttemptCount', 'TcpStatus')
         'NET-DNS-001' = @('Query', 'IPAddress')
         'NET-INT-001' = @('Target', 'Protocol')
         'SYS-DISK-001' = @('DeviceId', 'SizeBytes', 'FreeBytes', 'PercentFree')

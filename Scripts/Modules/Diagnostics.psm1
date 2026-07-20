@@ -17,6 +17,100 @@ function Invoke-ArchesDiagnostic {
     }
 }
 
+function Get-ArchesDefaultRoute {
+    Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop |
+        Sort-Object RouteMetric |
+        Select-Object -First 1
+}
+
+function Get-ArchesGatewayNeighbor {
+    param([Parameter(Mandatory)][string]$IPAddress)
+    Get-NetNeighbor -IPAddress $IPAddress -AddressFamily IPv4 -ErrorAction Stop |
+        Where-Object State -notin @('Unreachable', 'Incomplete') |
+        Select-Object -First 1
+}
+
+function Invoke-ArchesIcmpSamples {
+    param(
+        [Parameter(Mandatory)][string]$Target,
+        [ValidateRange(1, 10)][int]$Attempts = 3,
+        [ValidateRange(100, 10000)][int]$TimeoutMilliseconds = 1000
+    )
+    $results = @()
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        $ping = New-Object Net.NetworkInformation.Ping
+        try {
+            $reply = $ping.Send($Target, $TimeoutMilliseconds)
+            $results += [PSCustomObject]@{
+                Attempt = $attempt
+                Status = [string]$reply.Status
+                RoundtripTimeMs = if ($reply.Status -eq 'Success') { [long]$reply.RoundtripTime } else { $null }
+            }
+        }
+        catch {
+            $results += [PSCustomObject]@{
+                Attempt = $attempt
+                Status = 'Error'
+                RoundtripTimeMs = $null
+            }
+        }
+        finally {
+            $ping.Dispose()
+        }
+    }
+    $results
+}
+
+function Test-ArchesTcpReachability {
+    param(
+        [Parameter(Mandatory)][string]$Target,
+        [Parameter(Mandatory)][ValidateRange(1, 65535)][int]$Port,
+        [ValidateRange(100, 30000)][int]$TimeoutMilliseconds = 3000
+    )
+    $client = New-Object Net.Sockets.TcpClient
+    $asyncResult = $null
+    try {
+        $asyncResult = $client.BeginConnect($Target, $Port, $null, $null)
+        if (-not $asyncResult.AsyncWaitHandle.WaitOne($TimeoutMilliseconds, $false)) {
+            return [PSCustomObject]@{ Status='Timeout'; Target=$Target; Port=$Port }
+        }
+        $client.EndConnect($asyncResult)
+        [PSCustomObject]@{ Status='Success'; Target=$Target; Port=$Port }
+    }
+    catch {
+        [PSCustomObject]@{ Status='Error'; Target=$Target; Port=$Port }
+    }
+    finally {
+        if ($null -ne $asyncResult -and $null -ne $asyncResult.AsyncWaitHandle) {
+            $asyncResult.AsyncWaitHandle.Close()
+        }
+        $client.Close()
+    }
+}
+
+function Resolve-ArchesDnsBounded {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [ValidateRange(100, 30000)][int]$TimeoutMilliseconds = 3000
+    )
+    $asyncResult = [Net.Dns]::BeginGetHostAddresses($Name, $null, $null)
+    try {
+        if (-not $asyncResult.AsyncWaitHandle.WaitOne($TimeoutMilliseconds, $false)) {
+            return [PSCustomObject]@{ Status='Timeout'; Name=$Name; Addresses=@() }
+        }
+        $addresses = @([Net.Dns]::EndGetHostAddresses($asyncResult) | ForEach-Object IPAddressToString)
+        [PSCustomObject]@{ Status='Success'; Name=$Name; Addresses=$addresses }
+    }
+    catch {
+        [PSCustomObject]@{ Status='Error'; Name=$Name; Addresses=@() }
+    }
+    finally {
+        if ($null -ne $asyncResult.AsyncWaitHandle) {
+            $asyncResult.AsyncWaitHandle.Close()
+        }
+    }
+}
+
 function Get-ArchesSecurityDiagnostics {
     param([Parameter(Mandatory)][object]$Configuration)
     $results = @()
@@ -89,29 +183,70 @@ function Get-ArchesNetworkDiagnostics {
     param([Parameter(Mandatory)][object]$Configuration)
     $results = @()
     $results += Invoke-ArchesDiagnostic 'NET-GW-001' 'Network' 'Default gateway' {
-        $route = Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop | Sort-Object RouteMetric | Select-Object -First 1
-        if ($route -and (Test-Connection -ComputerName $route.NextHop -Count 1 -Quiet)) {
-            New-ArchesResult -Id 'NET-GW-001' -Category Network -Title 'Default gateway' -Status Pass -Summary 'The default gateway responds.' `
-                -Evidence ([PSCustomObject]@{ NextHop=$route.NextHop; InterfaceAlias=$route.InterfaceAlias; RouteMetric=$route.RouteMetric })
-        } else {
-            New-ArchesResult -Id 'NET-GW-001' -Category Network -Title 'Default gateway' -Status Fail -Severity High -Summary 'No responsive default gateway was found.' `
-                -Evidence ([PSCustomObject]@{ NextHop=$route.NextHop; InterfaceAlias=$route.InterfaceAlias; RouteMetric=$route.RouteMetric }) `
-                -Recommendation 'Check the adapter, cable/Wi-Fi connection, DHCP lease, and router.'
+        $route = Get-ArchesDefaultRoute
+        if ($null -eq $route) {
+            New-ArchesResult -Id 'NET-GW-001' -Category Network -Title 'Default gateway' -Status Fail -Severity High `
+                -Summary 'No IPv4 default route is configured.' `
+                -Evidence ([PSCustomObject]@{ RoutePresent=$false; NeighborResolved=$false; IcmpSuccessCount=0; IcmpAttemptCount=0; TcpStatus='NotAttempted' }) `
+                -Recommendation 'Check adapter addressing, DHCP/static configuration, and default-route policy.'
+        }
+        else {
+            $neighbor = Get-ArchesGatewayNeighbor -IPAddress $route.NextHop
+            $icmp = @(Invoke-ArchesIcmpSamples -Target $route.NextHop -Attempts 3 -TimeoutMilliseconds 1000)
+            $icmpSuccessCount = @($icmp | Where-Object Status -eq 'Success').Count
+            $tcp = Test-ArchesTcpReachability -Target 'www.microsoft.com' -Port 443 -TimeoutMilliseconds 3000
+            $evidence = [PSCustomObject]@{
+                RoutePresent = $true
+                NextHop = $route.NextHop
+                InterfaceAlias = $route.InterfaceAlias
+                RouteMetric = $route.RouteMetric
+                NeighborResolved = $null -ne $neighbor
+                IcmpSuccessCount = $icmpSuccessCount
+                IcmpAttemptCount = $icmp.Count
+                TcpStatus = $tcp.Status
+            }
+            if ($icmpSuccessCount -gt 0 -and $tcp.Status -eq 'Success') {
+                New-ArchesResult -Id 'NET-GW-001' -Category Network -Title 'Default gateway' -Status Pass `
+                    -Summary 'The default route, gateway ICMP samples, and independent TCP reachability succeeded.' -Evidence $evidence
+            }
+            elseif ($icmpSuccessCount -eq 0 -and $tcp.Status -eq 'Success') {
+                New-ArchesResult -Id 'NET-GW-001' -Category Network -Title 'Default gateway' -Status Warning -Severity Low `
+                    -Summary 'The route and independent TCP reachability work, but the gateway did not answer bounded ICMP samples.' -Evidence $evidence `
+                    -Recommendation 'ICMP may be blocked by policy; do not treat this alone as an outage.'
+            }
+            elseif ($null -eq $neighbor -and $icmpSuccessCount -eq 0 -and $tcp.Status -in @('Error', 'Timeout')) {
+                New-ArchesResult -Id 'NET-GW-001' -Category Network -Title 'Default gateway' -Status Fail -Severity High `
+                    -Summary 'Route, neighbor, ICMP, and independent TCP evidence indicate a local connectivity outage.' -Evidence $evidence `
+                    -Recommendation 'Check the adapter, cable/Wi-Fi connection, addressing, gateway, and local network.'
+            }
+            else {
+                New-ArchesResult -Id 'NET-GW-001' -Category Network -Title 'Default gateway' -Status Unknown -Severity Info `
+                    -Summary 'Gateway evidence is partial or conflicting; connectivity could not be established safely.' -Evidence $evidence `
+                    -Recommendation 'Review route, neighbor, ICMP, and TCP evidence before diagnosing an outage.'
+            }
         }
     }
     $results += Invoke-ArchesDiagnostic 'NET-DNS-001' 'Network' 'DNS resolution' {
-        $answer = Resolve-DnsName -Name 'www.microsoft.com' -Type A -DnsOnly -ErrorAction Stop | Select-Object -First 1
-        New-ArchesResult -Id 'NET-DNS-001' -Category Network -Title 'DNS resolution' -Status Pass -Summary 'DNS resolution succeeded.' `
-            -Evidence ([PSCustomObject]@{ Query='www.microsoft.com'; IPAddress=$answer.IPAddress })
+        $answer = Resolve-ArchesDnsBounded -Name 'www.microsoft.com' -TimeoutMilliseconds 3000
+        if ($answer.Status -eq 'Success' -and @($answer.Addresses).Count) {
+            New-ArchesResult -Id 'NET-DNS-001' -Category Network -Title 'DNS resolution' -Status Pass -Summary 'DNS resolution succeeded within the bounded timeout.' `
+                -Evidence ([PSCustomObject]@{ Query='www.microsoft.com'; IPAddress=$answer.Addresses[0] })
+        }
+        else {
+            New-ArchesResult -Id 'NET-DNS-001' -Category Network -Title 'DNS resolution' -Status Unknown -Severity Info `
+                -Summary "DNS resolution did not complete successfully within the bounded check ($($answer.Status))." `
+                -Evidence ([PSCustomObject]@{ Query='www.microsoft.com'; IPAddress=$null })
+        }
     }
     $results += Invoke-ArchesDiagnostic 'NET-INT-001' 'Network' 'Internet reachability' {
-        $reachable = Test-NetConnection -ComputerName '1.1.1.1' -Port 443 -InformationLevel Quiet -WarningAction SilentlyContinue
-        if ($reachable) {
+        $reachable = Test-ArchesTcpReachability -Target 'www.microsoft.com' -Port 443 -TimeoutMilliseconds 3000
+        if ($reachable.Status -eq 'Success') {
             New-ArchesResult -Id 'NET-INT-001' -Category Network -Title 'Internet reachability' -Status Pass -Summary 'Outbound TCP 443 connectivity succeeded.' `
-                -Evidence ([PSCustomObject]@{ Target='1.1.1.1:443'; Protocol='TCP' })
+                -Evidence ([PSCustomObject]@{ Target='www.microsoft.com:443'; Protocol='TCP' })
         } else {
-            New-ArchesResult -Id 'NET-INT-001' -Category Network -Title 'Internet reachability' -Status Fail -Severity High -Summary 'Outbound TCP 443 connectivity failed.' `
-                -Evidence ([PSCustomObject]@{ Target='1.1.1.1:443'; Protocol='TCP' }) -Recommendation 'Check WAN status, firewall policy, captive portals, and upstream service availability.'
+            New-ArchesResult -Id 'NET-INT-001' -Category Network -Title 'Internet reachability' -Status Unknown -Severity Info `
+                -Summary "The bounded outbound TCP check did not succeed ($($reachable.Status))." `
+                -Evidence ([PSCustomObject]@{ Target='www.microsoft.com:443'; Protocol='TCP' }) -Recommendation 'Correlate with gateway and DNS evidence before diagnosing an outage.'
         }
     }
     $results
@@ -235,4 +370,7 @@ function Invoke-ArchesFullScan {
     ) | Sort-ArchesResults
 }
 
-Export-ModuleMember -Function Test-ArchesAdministrator, Get-ArchesSecurityDiagnostics, Get-ArchesNetworkDiagnostics, Get-ArchesSystemDiagnostics, Get-ArchesConnectedDeviceDiagnostics, Get-ArchesPerformanceDiagnostics, Invoke-ArchesFullScan
+Export-ModuleMember -Function Test-ArchesAdministrator, Get-ArchesSecurityDiagnostics, `
+    Get-ArchesNetworkDiagnostics, Get-ArchesSystemDiagnostics, `
+    Get-ArchesConnectedDeviceDiagnostics, Get-ArchesPerformanceDiagnostics, `
+    Invoke-ArchesFullScan
