@@ -12,7 +12,7 @@ Open Windows PowerShell as Administrator and run:
 
 Focused scans are available with `-Scan Security`, `Network`, `System`, `Devices`, or `Performance`. Use `-ProblemsOnly` for the simplified console view and `-NoOpenReport` for unattended execution. On Windows, `Run-ArchesCyber.bat` provides an elevated double-click launcher.
 
-Reports are written to `Desktop\ArchesCyberAudit` as HTML, JSON, and CSV. Diagnostic operations are read-only. Guided remediation and rollback remain under development and are not enabled by this entry point.
+Each run creates a timestamped folder under `Desktop\ArchesCyberAudit` with an offline HTML dashboard plus JSON and CSV exports. The HTML dashboard opens in Client Summary mode and includes a Technical Details tab with approved IP configuration, observed IPv4/MAC neighbors, firewall-rule inventory, user/admin totals, diagnostic evidence, and validated change history. Diagnostic operations are read-only.
 
 The large legacy audit scripts and USB launcher are disabled as Phase 1 entry points because their historical multi-file HTML/JSON/CSV/ZIP bundles are not fully covered by the Phase 1 evidence allowlist. Use the repository-level `Run-ArchesCyber.bat` or `Scripts\Start-ArchesCyber.ps1`. Legacy source remains only for controlled migration work and does not collect or export when invoked.
 
@@ -20,14 +20,16 @@ The Windows 11 readiness check reports hardware clues only. Microsoft PC Health 
 
 ## Guided fixes
 
-Fixes are separate from scanning. Read-only preflight displays an exact structured plan before approval. Preview that plan with `-WhatIf`, then run it deliberately:
+Fixes are separate from scanning. The launcher can open `Scripts\Start-ArchesGuidedFixes.ps1`, a built-in Windows dialog that creates a read-only plan, displays the exact before/after change, and requires both a checked approval and a final confirmation. The HTML report cannot execute PowerShell; its fix buttons direct the operator to this trusted local dialog.
+
+The command-line path also displays the plan before asking for terminal approval. Preview with `-WhatIf`, then run deliberately:
 
 ```powershell
 .\Scripts\Invoke-ArchesFix.ps1 -Id FIX-FW-001 -WhatIf
 .\Scripts\Invoke-ArchesFix.ps1 -Id FIX-FW-001 -ManagementOwnershipAttested -Approved
 ```
 
-`-Approved` is not required for `-WhatIf`. Firewall execution also requires `-ManagementOwnershipAttested` after the technician confirms no unsupported management product owns firewall policy. Attestation cannot override detected or unknown management. Execution rechecks the planned baseline and refuses stale plans.
+`-Approved` is not required for `-WhatIf`. On an execution run, the operator must type `APPROVE` only after the exact plan is displayed. Firewall execution also requires `-ManagementOwnershipAttested` after the technician confirms no unsupported management product owns firewall policy. Attestation cannot override detected or unknown management. Execution rechecks the planned baseline and refuses stale plans.
 
 Firewall changes create a JSON rollback record before changing state. The project intentionally does not offer static-IP-to-DHCP conversion or broad network resets in Phase 1.
 

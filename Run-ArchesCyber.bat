@@ -19,5 +19,12 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Scripts\Start-Arch
 set "EXITCODE=%ERRORLEVEL%"
 echo.
 echo Arches Cyber finished with exit code %EXITCODE%.
+if exist "%~dp0Scripts\Start-ArchesGuidedFixes.ps1" (
+    echo.
+    choice /C YN /N /M "Open Guided Fixes? [Y/N] "
+    if errorlevel 2 goto finish
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Scripts\Start-ArchesGuidedFixes.ps1"
+)
+:finish
 pause
 exit /b %EXITCODE%

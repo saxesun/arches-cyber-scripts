@@ -127,7 +127,7 @@ Reports identify computer, scan time, scan type, script version, and elevation s
 
 Reports must not expose passwords, tokens, BitLocker recovery keys, browser data, message content, credential-bearing command lines, or unnecessary personal data. Retention cleanup is limited to known Arches Cyber report and rollback directories.
 
-Phase 1 evidence is deny-by-default. `Privacy.psm1` maps each approved finding ID to its permitted evidence fields; unknown IDs export no evidence. Diagnostics construct only those fields, and report export reapplies the allowlist as defense in depth. Current identity evidence is limited to counts, BitLocker evidence excludes key protectors and recovery material, connected-device evidence is limited to a count, and legacy DNS-cache collection is disabled. This allowlist does not make free-form future summaries safe automatically; new findings and fields require privacy review and deterministic tests before approval.
+Phase 1 evidence is deny-by-default. `Privacy.psm1` maps each approved finding ID to its permitted evidence fields; unknown IDs export no evidence. Diagnostics construct only those fields, and report export reapplies the allowlist as defense in depth. Identity evidence is limited to counts, BitLocker evidence excludes key protectors and recovery material, and technical network inventory contains bounded IP/MAC/interface observations without usernames or discovered hostnames. Firewall inventory excludes program paths, service identity, users, and unbounded rule output. Legacy DNS-cache collection is disabled. This allowlist does not make free-form future summaries safe automatically; new findings and fields require privacy review and deterministic tests before approval.
 
 Console, HTML, JSON metadata, CSV rows, and completion logs distinguish confirmed `Warning`/`Fail` findings from `Unknown` and `Error` checks. Unknown or failed execution is never included in the confirmed-finding count.
 
@@ -210,10 +210,10 @@ Baseline reviewed on 2026-07-19 at `diagnostics-module` commit `e552450`.
 - Complete console output is currently the default; problems-only requires `-ProblemsOnly`.
 - The result model lacks business impact, explicit remediation availability, and richer technical/client separation.
 - Current diagnostics cover only part of the stated scope; update age, users, password policy, adapter addressing, latency/packet loss, listening processes, startup/service failures, and targeted device diagnostics remain incomplete in the modular Phase 1 path.
-- Reports are files in one output directory, not a unique directory per run; they omit scan type, script version, elevation state, business impact, and clearly separated raw evidence.
+- Reports now use a unique directory per run, record scan type, script version and elevation state, and separate client and technical views; business-impact metadata remains incomplete.
 - Report/rollback retention settings are validated but automated scoped retention behavior is incomplete.
 - The launcher reports only a generic PowerShell exit code; the required exit-code contract is not implemented.
-- The remediation catalog has two entries, not the target 10–15, and firewall remediation does not yet prove management-policy conflict detection.
+- The remediation catalog has two entries, not the target 10–15; supported firewall-management signals and explicit technician attestation are implemented, but the detection catalog still requires managed-environment validation.
 - Legacy audit scripts and launchers remain present without a complete operator-facing legacy label/migration map.
 - The README does not yet contain the complete exact run, test, report, fix, undo, and troubleshooting instructions required by the release gate.
 - Real Windows 11 VM validation has not been completed. Client readiness must not be claimed.

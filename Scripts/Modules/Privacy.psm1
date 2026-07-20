@@ -3,10 +3,13 @@ Set-StrictMode -Version 2.0
 function Get-ArchesEvidenceAllowlist {
     @{
         'SEC-FW-001' = @('DisabledProfiles', 'ObservedProfiles')
+        'SEC-FW-RULES-001' = @('RuleCount', 'EnabledRuleCount', 'AllowRuleCount', 'BlockRuleCount', 'Rules', 'Truncated')
         'SEC-AV-001' = @('SecurityCenterAvailable', 'RegisteredProducts', 'ActiveThirdPartyProducts', 'DefenderAvailable', 'DefenderEnabled', 'DefenderRealTimeEnabled', 'DefenderMode', 'Managed', 'ConflictingSignals')
         'SEC-RDP-001' = @('RegistryValue')
         'SEC-BL-001' = @('MountPoint', 'VolumeStatus', 'ProtectionStatus', 'EncryptionPercentage')
         'SEC-ADM-001' = @('PrincipalCount')
+        'SEC-USERS-001' = @('LocalUserCount', 'EnabledUserCount', 'DisabledUserCount', 'PasswordRequiredCount')
+        'NET-IF-001' = @('InterfaceCount', 'Interfaces')
         'NET-GW-001' = @('RoutePresent', 'NextHop', 'InterfaceAlias', 'RouteMetric', 'NeighborResolved', 'IcmpSuccessCount', 'IcmpAttemptCount', 'TcpStatus')
         'NET-DNS-001' = @('Query', 'IPAddress')
         'NET-INT-001' = @('Target', 'Protocol')
@@ -14,7 +17,7 @@ function Get-ArchesEvidenceAllowlist {
         'SYS-BOOT-001' = @('LastBootUpTime', 'DaysSinceRestart')
         'SYS-UPD-001' = @('ServiceName', 'Status', 'StartType')
         'SYS-W11-001' = @('CPU', 'Cores', 'RAM_GB', 'SystemDisk_GB', 'Architecture', 'TPM_Present', 'TPM_Ready')
-        'DEV-ARP-001' = @('NeighborCount')
+        'DEV-ARP-001' = @('NeighborCount', 'Neighbors', 'Truncated')
         'PERF-MEM-001' = @('PercentAvailable', 'FreePhysicalMemoryKB', 'TotalVisibleMemoryKB')
         'PERF-CPU-001' = @('AverageLoadPercent')
         'DIAGNOSTIC-ERROR' = @('ErrorType')

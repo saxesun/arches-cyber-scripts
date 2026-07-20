@@ -36,8 +36,24 @@ Describe 'Arches report export' {
         @($csv | Where-Object Classification -eq 'ConfirmedFinding').Count | Should -Be 2
         @($csv | Where-Object Classification -eq 'Unknown').Count | Should -Be 1
         @($csv | Where-Object Classification -eq 'Error').Count | Should -Be 1
-        $html | Should -Match 'Confirmed findings:</strong> 2'
-        $html | Should -Match 'Unknown:</strong> 1'
-        $html | Should -Match 'Errors:</strong> 1'
+        $html | Should -Match '2 confirmed findings'
+        $html | Should -Match 'Unknown checks:</strong> 1'
+        $html | Should -Match 'Diagnostic errors:</strong> 1'
+        $html | Should -Match 'Client Summary'
+        $html | Should -Match 'Technical Details'
+        $html | Should -Match 'Inventory overview'
+        $html | Should -Match 'Change and rollback history'
+    }
+
+    It 'creates a unique directory with report metadata' {
+        $target = Join-Path $TestDrive 'unique'
+        $result = New-ArchesResult -Id T1 -Category Test -Title Sample -Status Pass
+        $report = Export-ArchesReport -Results @($result) -Directory $target `
+            -ComputerName TESTPC -ScanType Network -ScriptVersion 0.2.0-dev -Elevated $true
+        Split-Path -Parent $report.Html | Should -Be $report.Directory
+        $json = Get-Content -LiteralPath $report.Json -Raw | ConvertFrom-Json
+        $json.Metadata.ScanType | Should -Be 'Network'
+        $json.Metadata.ScriptVersion | Should -Be '0.2.0-dev'
+        $json.Metadata.Elevated | Should -BeTrue
     }
 }

@@ -41,7 +41,10 @@ try {
         $results | Sort-ArchesResults | Format-Table Severity, Category, Status, Title, Summary -AutoSize
         Write-Host "`nConfirmed findings: $($confirmedFindings.Count); Unknown: $($unknownResults.Count); Errors: $($errorResults.Count)"
     }
-    $report = Export-ArchesReport -Results $results -Directory $OutputDirectory
+    $rollbackDirectory = Join-Path $PSScriptRoot 'Rollback'
+    $report = Export-ArchesReport -Results $results -Directory $OutputDirectory `
+        -ScanType $Scan -ScriptVersion '0.2.0-dev' `
+        -Elevated:(Test-ArchesAdministrator) -RollbackDirectory $rollbackDirectory
     Write-ArchesLog -Path $logPath -Message "Scan completed: ConfirmedFindings=$($report.ConfirmedFindingCount); Unknown=$($report.UnknownCount); Errors=$($report.ErrorCount)."
     Write-Host "`nReport: $($report.Html)" -ForegroundColor Cyan
     if (-not $NoOpenReport) { Start-Process $report.Html }

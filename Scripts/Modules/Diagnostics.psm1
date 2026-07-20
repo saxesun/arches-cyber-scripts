@@ -265,12 +265,59 @@ function Get-ArchesSecurityDiagnostics {
                 -Evidence ([PSCustomObject]@{ PrincipalCount = $admins.Count })
         }
     }
+    $results += Invoke-ArchesDiagnostic 'SEC-USERS-001' 'Security' 'Local user account summary' {
+        $users = @(Get-LocalUser -ErrorAction Stop)
+        $enabled = @($users | Where-Object Enabled).Count
+        $passwordRequired = @($users | Where-Object PasswordRequired).Count
+        New-ArchesResult -Id 'SEC-USERS-001' -Category Security -Title 'Local user account summary' -Status Pass `
+            -Summary "$($users.Count) local account(s) found; $enabled enabled." `
+            -Evidence ([PSCustomObject]@{
+                LocalUserCount = $users.Count
+                EnabledUserCount = $enabled
+                DisabledUserCount = $users.Count - $enabled
+                PasswordRequiredCount = $passwordRequired
+            })
+    }
+    $results += Invoke-ArchesDiagnostic 'SEC-FW-RULES-001' 'Security' 'Firewall rule inventory' {
+        $allRules = @(Get-NetFirewallRule -ErrorAction Stop)
+        $enabledRules = @($allRules | Where-Object Enabled -eq 'True')
+        $ruleLimit = 500
+        $safeRules = @($enabledRules | Sort-Object DisplayName | Select-Object -First $ruleLimit | ForEach-Object {
+            'Name={0}; Direction={1}; Action={2}; Profile={3}; Enabled={4}' -f `
+                ([string]$_.DisplayName -replace '[\r\n;]', ' '), $_.Direction, $_.Action, $_.Profile, $_.Enabled
+        })
+        New-ArchesResult -Id 'SEC-FW-RULES-001' -Category Security -Title 'Firewall rule inventory' -Status Pass `
+            -Summary "$($allRules.Count) firewall rule(s) found; $($enabledRules.Count) enabled." `
+            -Evidence ([PSCustomObject]@{
+                RuleCount = $allRules.Count
+                EnabledRuleCount = $enabledRules.Count
+                AllowRuleCount = @($enabledRules | Where-Object Action -eq 'Allow').Count
+                BlockRuleCount = @($enabledRules | Where-Object Action -eq 'Block').Count
+                Rules = $safeRules
+                Truncated = $enabledRules.Count -gt $ruleLimit
+            })
+    }
     $results
 }
 
 function Get-ArchesNetworkDiagnostics {
     param([Parameter(Mandatory)][object]$Configuration)
     $results = @()
+    $results += Invoke-ArchesDiagnostic 'NET-IF-001' 'Network' 'IP configuration' {
+        $configurations = @(Get-NetIPConfiguration -ErrorAction Stop | Where-Object {
+            $_.NetAdapter.Status -eq 'Up'
+        })
+        $interfaces = @($configurations | ForEach-Object {
+            $ipv4 = @($_.IPv4Address | ForEach-Object IPAddress) -join ', '
+            $gateway = @($_.IPv4DefaultGateway | ForEach-Object NextHop) -join ', '
+            $dns = @($_.DNSServer.ServerAddresses | Where-Object { $_ -match '^\d{1,3}(\.\d{1,3}){3}$' }) -join ', '
+            'Interface={0}; IPv4={1}; Gateway={2}; DNS={3}' -f `
+                ([string]$_.InterfaceAlias -replace '[\r\n;]', ' '), $ipv4, $gateway, $dns
+        })
+        New-ArchesResult -Id 'NET-IF-001' -Category Network -Title 'IP configuration' -Status Pass `
+            -Summary "$($configurations.Count) active network interface(s) found." `
+            -Evidence ([PSCustomObject]@{ InterfaceCount=$configurations.Count; Interfaces=$interfaces })
+    }
     $results += Invoke-ArchesDiagnostic 'NET-GW-001' 'Network' 'Default gateway' {
         $route = Get-ArchesDefaultRoute
         if ($null -eq $route) {
@@ -409,9 +456,18 @@ function Get-ArchesConnectedDeviceDiagnostics {
         $neighbors = @(Get-NetNeighbor -AddressFamily IPv4 -ErrorAction Stop | Where-Object {
             $_.State -notin @('Unreachable','Incomplete') -and $_.IPAddress -notmatch '^(224|239)\.'
         })
+        $neighborLimit = 250
+        $safeNeighbors = @($neighbors | Sort-Object InterfaceAlias,IPAddress | Select-Object -First $neighborLimit | ForEach-Object {
+            'IPv4={0}; MAC={1}; Interface={2}; State={3}' -f $_.IPAddress, $_.LinkLayerAddress, `
+                ([string]$_.InterfaceAlias -replace '[\r\n;]', ' '), $_.State
+        })
         New-ArchesResult -Id 'DEV-ARP-001' -Category 'Connected Devices' -Title 'Neighbor table visibility' -Status Pass `
             -Summary "$($neighbors.Count) active or recently observed IPv4 neighbor(s) found." `
-            -Evidence ([PSCustomObject]@{ NeighborCount = $neighbors.Count })
+            -Evidence ([PSCustomObject]@{
+                NeighborCount = $neighbors.Count
+                Neighbors = $safeNeighbors
+                Truncated = $neighbors.Count -gt $neighborLimit
+            })
     }
     $results
 }

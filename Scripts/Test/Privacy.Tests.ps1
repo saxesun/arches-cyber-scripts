@@ -37,6 +37,30 @@ Describe 'Phase 1 evidence and report privacy' {
             Should -BeNullOrEmpty
     }
 
+    It 'exports only approved technical inventory fields' {
+        $safe = ConvertTo-ArchesSafeEvidence -Id DEV-ARP-001 -Evidence ([PSCustomObject]@{
+            NeighborCount = 1
+            Neighbors = @('IPv4=192.0.2.10; MAC=00-11-22-33-44-55; Interface=Ethernet; State=Reachable')
+            Truncated = $false
+            HostName = $seededSecrets[4]
+            UserName = $seededSecrets[4]
+        })
+        @($safe.PSObject.Properties.Name) | Should -Be @('NeighborCount', 'Neighbors', 'Truncated')
+        ($safe | ConvertTo-Json -Compress) | Should -Not -Match 'Seeded-'
+    }
+
+    It 'keeps local account inventory count-only' {
+        $safe = ConvertTo-ArchesSafeEvidence -Id SEC-USERS-001 -Evidence ([PSCustomObject]@{
+            LocalUserCount = 3
+            EnabledUserCount = 2
+            DisabledUserCount = 1
+            PasswordRequiredCount = 2
+            Names = @($seededSecrets[4])
+        })
+        @($safe.PSObject.Properties.Name) | Should -Not -Contain 'Names'
+        ($safe | ConvertTo-Json -Compress) | Should -Not -Match 'Seeded-'
+    }
+
     It 'sanitizes seeded sensitive values again during report export' {
         $target = Join-Path $TestDrive 'reports'
         $unsafeResult = [PSCustomObject]@{
