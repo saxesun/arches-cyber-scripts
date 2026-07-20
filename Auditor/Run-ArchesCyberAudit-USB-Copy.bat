@@ -1,6 +1,10 @@
 @echo off
 setlocal EnableExtensions
 
+echo ERROR: This legacy audit launcher is disabled for Phase 1 because its historical export bundle is not covered by the Phase 1 privacy allowlist.
+echo Use the repository-level Run-ArchesCyber.bat launcher instead.
+exit /b 3
+
 :: Arches Cyber Audit Launcher
 :: Place this BAT in the same folder as the PS1, or put the PS1 in a resources folder.
 

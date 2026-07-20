@@ -64,9 +64,11 @@ Describe 'Phase 1 evidence and report privacy' {
             -ComputerName '<script>seeded-computer</script>'
         $json = Get-Content -LiteralPath $report.Json -Raw
         $html = Get-Content -LiteralPath $report.Html -Raw
+        $csv = Get-Content -LiteralPath $report.Csv -Raw
         foreach ($secret in $seededSecrets) {
             $json | Should -Not -Match ([regex]::Escape($secret))
             $html | Should -Not -Match ([regex]::Escape($secret))
+            $csv | Should -Not -Match ([regex]::Escape($secret))
         }
         $html | Should -Not -Match '<script>seeded-computer</script>'
         $html | Should -Match '&lt;script&gt;seeded-computer&lt;/script&gt;'
@@ -82,5 +84,24 @@ Describe 'Phase 1 evidence and report privacy' {
         $legacySource | Should -Not -Match 'CsUserName|AdminNames'
         $legacySource | Should -Not -Match 'Select-Object Name, Command, Location, User'
         $legacySource | Should -Not -Match 'Select-Object LocalPath, RemotePath, Status, UserName'
+        $legacySource | Should -Not -Match 'Select-Object StatusCode, StatusDescription, Headers, Content'
+        $legacySource | Should -Not -Match 'FullPath\s*='
+        $legacySource | Should -Not -Match 'Get-SmbShare\s*\|\s*Select-Object.*Path'
+        $legacySource | Should -Not -Match 'Get-SmbMapping\s*\|\s*Select-Object.*RemotePath'
+        $legacySource | Should -Not -Match 'Get-Printer\s*\|\s*Select-Object.*Name'
+    }
+
+    It 'blocks both legacy audit scripts before any report artifact is created' {
+        $repositoryRoot = Split-Path -Parent $root
+        $legacyScripts = @(
+            (Join-Path $root 'Client-PC-Audit.ps1'),
+            (Join-Path $repositoryRoot 'Auditor\Client-PC-Audit-ArchesCyberAudit-USB-Copy.ps1')
+        )
+        $artifactCountBefore = @(Get-ChildItem -LiteralPath $TestDrive -Recurse -File).Count
+        foreach ($scriptPath in $legacyScripts) {
+            { & $scriptPath } | Should -Throw '*Legacy audit disabled for Phase 1*'
+        }
+        @(Get-ChildItem -LiteralPath $TestDrive -Recurse -File).Count |
+            Should -Be $artifactCountBefore
     }
 }

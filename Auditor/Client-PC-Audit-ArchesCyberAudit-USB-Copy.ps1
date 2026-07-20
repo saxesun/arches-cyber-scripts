@@ -2,6 +2,8 @@
 # Read-only workstation assessment script
 # Run as Administrator
 
+throw 'Legacy audit disabled for Phase 1: its historical export bundle is not covered by the Phase 1 evidence allowlist. Use Run-ArchesCyber.bat or Scripts\Start-ArchesCyber.ps1.'
+
 $TimeStamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
 $ComputerName = $env:COMPUTERNAME
 
@@ -183,7 +185,7 @@ Save-Text "20_Router_Brand_Clues.txt" {
         "HTTP gateway check:"
         try {
             Invoke-WebRequest -Uri "http://$Gateway" -UseBasicParsing -TimeoutSec 5 |
-            Select-Object StatusCode, StatusDescription, Headers, Content
+            Select-Object StatusCode, StatusDescription
         }
         catch { "HTTP check failed: $($_.Exception.Message)" }
 
@@ -191,7 +193,7 @@ Save-Text "20_Router_Brand_Clues.txt" {
         "HTTPS gateway check:"
         try {
             Invoke-WebRequest -Uri "https://$Gateway" -UseBasicParsing -TimeoutSec 5 |
-            Select-Object StatusCode, StatusDescription, Headers, Content
+            Select-Object StatusCode, StatusDescription
         }
         catch { "HTTPS check failed: $($_.Exception.Message)" }
     }
@@ -258,7 +260,8 @@ Save-Csv "24_Windows_Activation_Status.csv" {
 
 # 25 SMB shares
 Save-Csv "25_SMB_Shares.csv" {
-    Get-SmbShare | Select-Object Name, Path, Description, ShareState, FolderEnumerationMode
+    $Shares = @(Get-SmbShare)
+    [PSCustomObject]@{ ShareCount = $Shares.Count }
 }
 
 # 26 Listening ports
@@ -292,12 +295,14 @@ Save-Csv "29_Security_Center_AV.csv" {
 
 # 30 Mapped drives
 Save-Csv "30_Mapped_Drives.csv" {
-    Get-SmbMapping | Select-Object LocalPath, RemotePath, Status
+    $Mappings = @(Get-SmbMapping)
+    [PSCustomObject]@{ MappingCount = $Mappings.Count }
 }
 
 # 31 Printers
 Save-Csv "31_Printers.csv" {
-    Get-Printer | Select-Object Name, DriverName, PortName, Shared, Published, PrinterStatus
+    $Printers = @(Get-Printer)
+    [PSCustomObject]@{ PrinterCount = $Printers.Count }
 }
 
 # 32 Quick risk summary
@@ -535,7 +540,6 @@ $Manifest = $AllReportFiles | ForEach-Object {
         AuditTimestamp = $TimeStamp
         FileName = $_.Name
         FileType = $_.Extension.TrimStart('.').ToUpper()
-        FullPath = $_.FullName
         RelativePath = $_.Name
         SizeKB = [math]::Round($_.Length / 1KB, 2)
         SuggestedUse = switch -Wildcard ($_.Name) {

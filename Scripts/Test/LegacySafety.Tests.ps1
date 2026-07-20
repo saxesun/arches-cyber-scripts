@@ -8,6 +8,14 @@ Describe 'Legacy and alternate entry-point safety' {
         $source | Should -Not -Match '(?im)^\s*(ipconfig\s+/flushdns|Restart-Service|sfc\s+/scannow|DISM\b)'
     }
 
+    It 'marks legacy scripts as disabled Phase 1 entry points before collection starts' {
+        $source = Get-Content -LiteralPath (Join-Path $root 'Client-PC-Audit.ps1') -Raw
+        $throwPosition = $source.IndexOf("throw 'Legacy audit disabled for Phase 1")
+        $outputPosition = $source.IndexOf('New-Item -ItemType Directory')
+        $throwPosition | Should -BeGreaterOrEqual 0
+        $throwPosition | Should -BeLessThan $outputPosition
+    }
+
     It 'directs legacy DNS repair requests to the trusted remediation entry point' {
         $source = Get-Content -LiteralPath (Join-Path $root 'Client-PC-Audit.ps1') -Raw
         $source | Should -Match 'Invoke-ArchesFix\.ps1'

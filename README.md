@@ -14,7 +14,7 @@ Focused scans are available with `-Scan Security`, `Network`, `System`, `Devices
 
 Reports are written to `Desktop\ArchesCyberAudit` as HTML, JSON, and CSV. Diagnostic operations are read-only. Guided remediation and rollback remain under development and are not enabled by this entry point.
 
-Legacy audit launchers retain their read-only diagnostic menus, but legacy DNS, service, SFC, and DISM mutation prompts are disabled. Operators must use the trusted `Invoke-ArchesFix.ps1` workflow for an available approved remediation.
+The large legacy audit scripts and USB launcher are disabled as Phase 1 entry points because their historical multi-file HTML/JSON/CSV/ZIP bundles are not fully covered by the Phase 1 evidence allowlist. Use the repository-level `Run-ArchesCyber.bat` or `Scripts\Start-ArchesCyber.ps1`. Legacy source remains only for controlled migration work and does not collect or export when invoked.
 
 The Windows 11 readiness check reports hardware clues only. Microsoft PC Health Check remains the authoritative compatibility check because CPU model support cannot be determined reliably from core count and architecture alone.
 
