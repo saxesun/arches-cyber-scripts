@@ -26,10 +26,23 @@ try {
         'Performance' { @(Get-ArchesPerformanceDiagnostics -Configuration $configuration) }
         default    { @(Invoke-ArchesFullScan -Configuration $configuration) }
     }
-    if ($ProblemsOnly) { $displayResults = @($results | Get-ArchesProblems) } else { $displayResults = @($results | Sort-ArchesResults) }
-    $displayResults | Format-Table Severity, Category, Status, Title, Summary -AutoSize
+    $confirmedFindings = @($results | Where-Object Status -in @('Warning', 'Fail') | Sort-ArchesResults)
+    $unknownResults = @($results | Where-Object Status -eq 'Unknown' | Sort-ArchesResults)
+    $errorResults = @($results | Where-Object Status -eq 'Error' | Sort-ArchesResults)
+    if ($ProblemsOnly) {
+        Write-Host "`nConfirmed findings: $($confirmedFindings.Count)"
+        $confirmedFindings | Format-Table Severity, Category, Status, Title, Summary -AutoSize
+        Write-Host "`nUnknown checks: $($unknownResults.Count)"
+        $unknownResults | Format-Table Category, Status, Title, Summary -AutoSize
+        Write-Host "`nCheck errors: $($errorResults.Count)"
+        $errorResults | Format-Table Category, Status, Title, Summary -AutoSize
+    }
+    else {
+        $results | Sort-ArchesResults | Format-Table Severity, Category, Status, Title, Summary -AutoSize
+        Write-Host "`nConfirmed findings: $($confirmedFindings.Count); Unknown: $($unknownResults.Count); Errors: $($errorResults.Count)"
+    }
     $report = Export-ArchesReport -Results $results -Directory $OutputDirectory
-    Write-ArchesLog -Path $logPath -Message "Scan completed with $($report.ProblemCount) problem(s)."
+    Write-ArchesLog -Path $logPath -Message "Scan completed: ConfirmedFindings=$($report.ConfirmedFindingCount); Unknown=$($report.UnknownCount); Errors=$($report.ErrorCount)."
     Write-Host "`nReport: $($report.Html)" -ForegroundColor Cyan
     if (-not $NoOpenReport) { Start-Process $report.Html }
 }

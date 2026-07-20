@@ -49,36 +49,54 @@ function Get-ArchesRollbackIntegrityKey {
         }
     }
 
-    $directory = Split-Path -Parent $path
-    if (-not (Test-Path -LiteralPath $directory)) {
-        New-Item -ItemType Directory -Path $directory -Force -ErrorAction Stop | Out-Null
-    }
-    $key = New-ArchesRandomBytes -Count 32
+    $mutex = New-Object Threading.Mutex($false, 'Local\ArchesCyberRollbackIntegrityKey')
+    $lockTaken = $false
     try {
-        $protectedKey = [Security.Cryptography.ProtectedData]::Protect(
-            $key,
-            $null,
-            [Security.Cryptography.DataProtectionScope]::CurrentUser
-        )
-        $envelope = [PSCustomObject][ordered]@{
-            SchemaVersion = 1
-            ProtectionScope = 'CurrentUser'
-            ProtectedKey = [Convert]::ToBase64String($protectedKey)
+        $lockTaken = $mutex.WaitOne([TimeSpan]::FromSeconds(10))
+        if (-not $lockTaken) {
+            throw 'Timed out waiting for exclusive rollback integrity key creation.'
         }
-        $temporaryPath = "$path.tmp"
-        $envelope | ConvertTo-Json | Set-Content -LiteralPath $temporaryPath -Encoding UTF8
-        Move-Item -LiteralPath $temporaryPath -Destination $path -Force
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            return Get-ArchesRollbackIntegrityKey
+        }
+        $directory = Split-Path -Parent $path
+        if (-not (Test-Path -LiteralPath $directory)) {
+            New-Item -ItemType Directory -Path $directory -Force -ErrorAction Stop | Out-Null
+        }
+        $key = New-ArchesRandomBytes -Count 32
+        $temporaryPath = $null
+        try {
+            $protectedKey = [Security.Cryptography.ProtectedData]::Protect(
+                $key,
+                $null,
+                [Security.Cryptography.DataProtectionScope]::CurrentUser
+            )
+            $envelope = [PSCustomObject][ordered]@{
+                SchemaVersion = 1
+                ProtectionScope = 'CurrentUser'
+                ProtectedKey = [Convert]::ToBase64String($protectedKey)
+            }
+            $temporaryPath = "$path.$([guid]::NewGuid().ToString('N')).tmp"
+            $envelope | ConvertTo-Json | Set-Content -LiteralPath $temporaryPath -Encoding UTF8
+            Move-Item -LiteralPath $temporaryPath -Destination $path -Force
+        }
+        finally {
+            if ($null -ne $key) {
+                [Array]::Clear($key, 0, $key.Length)
+            }
+            if ($temporaryPath -and (Test-Path -LiteralPath $temporaryPath)) {
+                Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+            }
+        }
     }
     catch {
         throw "Rollback integrity key could not be created safely: $($_.Exception.Message)"
     }
     finally {
-        if ($null -ne $key) {
-            [Array]::Clear($key, 0, $key.Length)
+        if ($lockTaken) {
+            [void]$mutex.ReleaseMutex()
         }
-        if (Test-Path -LiteralPath "$path.tmp") {
-            Remove-Item -LiteralPath "$path.tmp" -Force -ErrorAction SilentlyContinue
-        }
+        $mutex.Dispose()
     }
     Get-ArchesRollbackIntegrityKey
 }

@@ -21,11 +21,19 @@ function Export-ArchesReport {
     $csv = Join-Path $Directory "ArchesCyber_${safeFileComputerName}_${stamp}.csv"
     $html = Join-Path $Directory "ArchesCyber_${safeFileComputerName}_${stamp}.html"
     $safeResults = @($Results | ForEach-Object {
+        $classification = switch ($_.Status) {
+            'Warning' { 'ConfirmedFinding' }
+            'Fail' { 'ConfirmedFinding' }
+            'Unknown' { 'Unknown' }
+            'Error' { 'Error' }
+            default { 'Pass' }
+        }
         [PSCustomObject][ordered]@{
             Id = $_.Id
             Category = $_.Category
             Title = $_.Title
             Status = $_.Status
+            Classification = $classification
             Severity = $_.Severity
             Summary = $_.Summary
             Evidence = ConvertTo-ArchesSafeEvidence -Id $_.Id -Evidence $_.Evidence -DiagnosticError:($_.Status -eq 'Error')
@@ -35,9 +43,20 @@ function Export-ArchesReport {
             CheckedAt = $_.CheckedAt
         }
     })
-    $safeResults | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $json -Encoding UTF8
-    $safeResults | Select-Object Id,Category,Title,Status,Severity,Summary,Recommendation,CheckedAt | Export-Csv -LiteralPath $csv -NoTypeInformation -Encoding UTF8
-    $problems = @($Results | Get-ArchesProblems)
+    $confirmed = @($safeResults | Where-Object Classification -eq 'ConfirmedFinding')
+    $unknown = @($safeResults | Where-Object Classification -eq 'Unknown')
+    $errors = @($safeResults | Where-Object Classification -eq 'Error')
+    $jsonDocument = [PSCustomObject][ordered]@{
+        Summary = [PSCustomObject][ordered]@{
+            CheckCount = $safeResults.Count
+            ConfirmedFindingCount = $confirmed.Count
+            UnknownCount = $unknown.Count
+            ErrorCount = $errors.Count
+        }
+        Results = $safeResults
+    }
+    $jsonDocument | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $json -Encoding UTF8
+    $safeResults | Select-Object Id,Category,Title,Status,Classification,Severity,Summary,Recommendation,CheckedAt | Export-Csv -LiteralPath $csv -NoTypeInformation -Encoding UTF8
     $scorecard = @(Get-ArchesScorecard -Results $Results)
     $scoreRows = foreach ($score in $scorecard) {
         '<tr><td>{0}</td><td>{1}</td><td>{2}</td><td>{3}</td></tr>' -f $score.Category,$score.Score,$score.Rating,$score.ProblemCount
@@ -53,13 +72,22 @@ function Export-ArchesReport {
     $document = @"
 <!doctype html><html><head><meta charset="utf-8"><title>Arches Cyber Report</title>
 <style>body{font-family:Segoe UI,Arial;margin:32px;color:#172033}table{border-collapse:collapse;width:100%}th,td{padding:9px;border:1px solid #d8dee9;text-align:left}.pass{background:#eaf8ef}.warn{background:#fff6d8}.fail{background:#fdeaea}.summary{padding:14px;background:#eef3f8;margin-bottom:20px}</style></head>
-<body><h1>Arches Cyber Diagnostic Report</h1><div class="summary"><strong>Computer:</strong> $safeComputerName<br><strong>Checks:</strong> $($Results.Count)<br><strong>Problems:</strong> $($problems.Count)<br><strong>Generated:</strong> $(Get-Date)</div>
+<body><h1>Arches Cyber Diagnostic Report</h1><div class="summary"><strong>Computer:</strong> $safeComputerName<br><strong>Checks:</strong> $($Results.Count)<br><strong>Confirmed findings:</strong> $($confirmed.Count)<br><strong>Unknown:</strong> $($unknown.Count)<br><strong>Errors:</strong> $($errors.Count)<br><strong>Generated:</strong> $(Get-Date)</div>
 <h2>Health scorecard</h2><table><thead><tr><th>Category</th><th>Score</th><th>Rating</th><th>Problems</th></tr></thead><tbody>$($scoreRows -join "`n")</tbody></table>
 <h2>Diagnostic findings</h2>
 <table><thead><tr><th>Severity</th><th>Category</th><th>Check</th><th>Status</th><th>Summary</th></tr></thead><tbody>$($rows -join "`n")</tbody></table></body></html>
 "@
     Set-Content -LiteralPath $html -Value $document -Encoding UTF8
-    [PSCustomObject]@{ Html = $html; Json = $json; Csv = $csv; ProblemCount = $problems.Count; Scorecard = $scorecard }
+    [PSCustomObject]@{
+        Html = $html
+        Json = $json
+        Csv = $csv
+        ProblemCount = $confirmed.Count
+        ConfirmedFindingCount = $confirmed.Count
+        UnknownCount = $unknown.Count
+        ErrorCount = $errors.Count
+        Scorecard = $scorecard
+    }
 }
 
 Export-ModuleMember -Function Export-ArchesReport

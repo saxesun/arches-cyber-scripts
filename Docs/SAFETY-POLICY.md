@@ -128,6 +128,8 @@ The HMAC covers every security-relevant record field, including identity, comput
 
 This integrity mechanism does not protect against an attacker who can execute code as the same Windows user, read that user's DPAPI-protected data, or modify the trusted Arches Cyber scripts themselves. It is tamper detection for data at rest, not a substitute for Windows account security, filesystem permissions, code signing, or an enterprise key-management system.
 
+Windows-only integration tests use isolated temporary paths to exercise real DPAPI CurrentUser key creation/reload, corruption, access failure, and serialized concurrent creation. CI confirms Windows PowerShell compatibility, but elevation transitions, a genuinely different administrator account, profile deletion, filesystem ACL denial, and reboot persistence still require the Windows 11 VM checklist.
+
 Allowed states are `Pending`, `Applied`, `RolledBack`, and `RollbackFailed`. State updates use atomic file replacement where practical.
 
 Validation rejects:

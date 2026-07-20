@@ -129,6 +129,8 @@ Reports must not expose passwords, tokens, BitLocker recovery keys, browser data
 
 Phase 1 evidence is deny-by-default. `Privacy.psm1` maps each approved finding ID to its permitted evidence fields; unknown IDs export no evidence. Diagnostics construct only those fields, and report export reapplies the allowlist as defense in depth. Current identity evidence is limited to counts, BitLocker evidence excludes key protectors and recovery material, connected-device evidence is limited to a count, and legacy DNS-cache collection is disabled. This allowlist does not make free-form future summaries safe automatically; new findings and fields require privacy review and deterministic tests before approval.
 
+Console, HTML, JSON metadata, CSV rows, and completion logs distinguish confirmed `Warning`/`Fail` findings from `Unknown` and `Error` checks. Unknown or failed execution is never included in the confirmed-finding count.
+
 ## Guided remediation
 
 Diagnostics never apply fixes. Every remediation follows `Docs/SAFETY-POLICY.md` and:
@@ -181,6 +183,7 @@ Until item 10 passes, the product is an MVP candidate—not client-ready.
 - Exercise every remediation with `WhatIf`.
 - Apply and undo every reversible remediation.
 - Confirm failed, tampered, wrong-computer, and wrong-status rollback records fail safely.
+- Verify DPAPI key creation and reload, corrupted and inaccessible key failure, elevated/current-user behavior, concurrent first-use creation, and the documented inability to undo under a different Windows user.
 - Reboot and verify changes where applicable.
 - Confirm no unrelated configuration changed.
 
