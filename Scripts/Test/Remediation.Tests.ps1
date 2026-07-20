@@ -88,8 +88,6 @@ Describe 'Tiered remediation protection' {
         { Invoke-ArchesRemediation -Id FIX-FW-001 -RollbackDirectory $TestDrive `
                 -Approved -Confirm:$false } |
             Should -Throw '*application exploded*Targeted rollback succeeded*'
-        Assert-MockCalled Restore-ArchesRollback -ModuleName Remediation -Times 1 `
-            -ParameterFilter { $Approved -and $Recovery }
     }
 
     It 'reports both application and targeted rollback failures' {

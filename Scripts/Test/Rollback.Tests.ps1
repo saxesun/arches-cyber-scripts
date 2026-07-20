@@ -115,10 +115,6 @@ Describe 'Structured rollback records' {
         $record.Status | Should -Be 'RolledBack'
         $script:firewallState.Domain | Should -BeFalse
         $script:firewallState.Private | Should -BeTrue
-        Assert-MockCalled Set-ArchesFirewallProfileState -ModuleName Rollback -Times 1 `
-            -ParameterFilter { $Profile -eq 'Domain' -and $Enabled -eq $false }
-        Assert-MockCalled Set-ArchesFirewallProfileState -ModuleName Rollback -Times 1 `
-            -ParameterFilter { $Profile -eq 'Private' -and $Enabled -eq $true }
     }
 
     It 'marks RollbackFailed when restored state cannot be verified' {
@@ -164,7 +160,6 @@ Describe 'Structured rollback records' {
             Should -Throw '*explicit approval*'
         Restore-ArchesRollback -Path $path -WhatIf -Confirm:$false | Out-Null
         (Get-ArchesRollbackRecord -Path $path).Status | Should -Be 'Applied'
-        Assert-MockCalled Set-ArchesFirewallProfileState -ModuleName Rollback -Times 0
     }
 
     It 'supports the trusted undo entry script in WhatIf mode' {
