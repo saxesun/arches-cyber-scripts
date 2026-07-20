@@ -23,7 +23,8 @@ if ($errorsFound.Count) {
 Write-Host 'PowerShell parsing passed.' -ForegroundColor Green
 
 $configPath = Join-Path $projectRoot 'Scripts\Config\Phase1.json'
-Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json | Out-Null
+Import-Module (Join-Path $projectRoot 'Scripts\Modules\Config.psm1') -Force
+Get-ArchesConfiguration -Path $configPath | Out-Null
 Write-Host 'Configuration JSON passed.' -ForegroundColor Green
 
 if ($RunPester) {

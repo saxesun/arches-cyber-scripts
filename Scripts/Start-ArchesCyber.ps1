@@ -8,9 +8,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $moduleRoot = Join-Path $PSScriptRoot 'Modules'
-@('Logging.psm1','Results.psm1','Diagnostics.psm1','Scoring.psm1','Reports.psm1') | ForEach-Object {
+@('Config.psm1','Logging.psm1','Results.psm1','Diagnostics.psm1','Scoring.psm1','Reports.psm1') | ForEach-Object {
     Import-Module (Join-Path $moduleRoot $_) -Force -ErrorAction Stop
 }
+$configuration = Get-ArchesConfiguration
 
 $logDirectory = Join-Path $PSScriptRoot 'Logs'
 $logPath = New-ArchesLog -Directory $logDirectory
@@ -18,12 +19,12 @@ Write-ArchesLog -Path $logPath -Message "Starting $Scan scan."
 
 try {
     $results = switch ($Scan) {
-        'Security' { @(Get-ArchesSecurityDiagnostics) }
-        'Network'  { @(Get-ArchesNetworkDiagnostics) }
-        'System'   { @(Get-ArchesSystemDiagnostics) }
-        'Devices'  { @(Get-ArchesConnectedDeviceDiagnostics) }
-        'Performance' { @(Get-ArchesPerformanceDiagnostics) }
-        default    { @(Invoke-ArchesFullScan) }
+        'Security' { @(Get-ArchesSecurityDiagnostics -Configuration $configuration) }
+        'Network'  { @(Get-ArchesNetworkDiagnostics -Configuration $configuration) }
+        'System'   { @(Get-ArchesSystemDiagnostics -Configuration $configuration) }
+        'Devices'  { @(Get-ArchesConnectedDeviceDiagnostics -Configuration $configuration) }
+        'Performance' { @(Get-ArchesPerformanceDiagnostics -Configuration $configuration) }
+        default    { @(Invoke-ArchesFullScan -Configuration $configuration) }
     }
     if ($ProblemsOnly) { $displayResults = @($results | Get-ArchesProblems) } else { $displayResults = @($results | Sort-ArchesResults) }
     $displayResults | Format-Table Severity, Category, Status, Title, Summary -AutoSize

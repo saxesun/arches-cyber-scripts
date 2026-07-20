@@ -17,6 +17,7 @@ function Invoke-ArchesDiagnostic {
 }
 
 function Get-ArchesSecurityDiagnostics {
+    param([Parameter(Mandatory)][object]$Configuration)
     $results = @()
     $results += Invoke-ArchesDiagnostic 'SEC-FW-001' 'Security' 'Windows Firewall' {
         $profiles = @(Get-NetFirewallProfile -ErrorAction Stop)
@@ -73,6 +74,7 @@ function Get-ArchesSecurityDiagnostics {
 }
 
 function Get-ArchesNetworkDiagnostics {
+    param([Parameter(Mandatory)][object]$Configuration)
     $results = @()
     $results += Invoke-ArchesDiagnostic 'NET-GW-001' 'Network' 'Default gateway' {
         $route = Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop | Sort-Object RouteMetric | Select-Object -First 1
@@ -98,13 +100,14 @@ function Get-ArchesNetworkDiagnostics {
 }
 
 function Get-ArchesSystemDiagnostics {
+    param([Parameter(Mandatory)][object]$Configuration)
     $results = @()
     $results += Invoke-ArchesDiagnostic 'SYS-DISK-001' 'Hardware' 'System drive free space' {
         $disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'" -ErrorAction Stop
         $percent = if ($disk.Size) { [math]::Round(($disk.FreeSpace / $disk.Size) * 100, 1) } else { 0 }
-        if ($percent -lt 10) {
+        if ($percent -le $Configuration.Thresholds.DiskFreeCriticalPercent) {
             New-ArchesResult -Id 'SYS-DISK-001' -Category Hardware -Title 'System drive free space' -Status Fail -Severity High -Summary "Only $percent% free space remains." -Evidence $disk -Recommendation 'Free disk space before updates or normal operation begin failing.'
-        } elseif ($percent -lt 20) {
+        } elseif ($percent -lt $Configuration.Thresholds.DiskFreeWarningPercent) {
             New-ArchesResult -Id 'SYS-DISK-001' -Category Hardware -Title 'System drive free space' -Status Warning -Severity Medium -Summary "$percent% free space remains." -Evidence $disk -Recommendation 'Plan disk cleanup or storage expansion.'
         } else {
             New-ArchesResult -Id 'SYS-DISK-001' -Category Hardware -Title 'System drive free space' -Status Pass -Summary "$percent% free space remains." -Evidence $disk
@@ -113,7 +116,7 @@ function Get-ArchesSystemDiagnostics {
     $results += Invoke-ArchesDiagnostic 'SYS-BOOT-001' 'Performance' 'Time since restart' {
         $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
         $days = [math]::Floor(((Get-Date) - $os.LastBootUpTime).TotalDays)
-        if ($days -gt 30) {
+        if ($days -ge $Configuration.Thresholds.RestartAgeWarningDays) {
             New-ArchesResult -Id 'SYS-BOOT-001' -Category Performance -Title 'Time since restart' -Status Warning -Severity Low -Summary "The computer has not restarted for $days days." -Evidence $os.LastBootUpTime -Recommendation 'Schedule a restart after saving work and confirming maintenance availability.'
         } else {
             New-ArchesResult -Id 'SYS-BOOT-001' -Category Performance -Title 'Time since restart' -Status Pass -Summary "Last restart was $days day(s) ago." -Evidence $os.LastBootUpTime
@@ -150,6 +153,7 @@ function Get-ArchesSystemDiagnostics {
 }
 
 function Get-ArchesConnectedDeviceDiagnostics {
+    param([Parameter(Mandatory)][object]$Configuration)
     $results = @()
     $results += Invoke-ArchesDiagnostic 'DEV-ARP-001' 'Connected Devices' 'Neighbor table visibility' {
         $neighbors = @(Get-NetNeighbor -AddressFamily IPv4 -ErrorAction Stop | Where-Object {
@@ -163,13 +167,14 @@ function Get-ArchesConnectedDeviceDiagnostics {
 }
 
 function Get-ArchesPerformanceDiagnostics {
+    param([Parameter(Mandatory)][object]$Configuration)
     $results = @()
     $results += Invoke-ArchesDiagnostic 'PERF-MEM-001' 'Performance' 'Available memory' {
         $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
         $percentAvailable = [math]::Round(($os.FreePhysicalMemory / $os.TotalVisibleMemorySize) * 100, 1)
-        if ($percentAvailable -lt 10) {
+        if ($percentAvailable -le $Configuration.Thresholds.MemoryAvailableCriticalPercent) {
             New-ArchesResult -Id 'PERF-MEM-001' -Category Performance -Title 'Available memory' -Status Fail -Severity High -Summary "Only $percentAvailable% memory is currently available." -Evidence $os -Recommendation 'Identify memory-heavy processes and evaluate whether the system needs more RAM.'
-        } elseif ($percentAvailable -lt 20) {
+        } elseif ($percentAvailable -lt $Configuration.Thresholds.MemoryAvailableWarningPercent) {
             New-ArchesResult -Id 'PERF-MEM-001' -Category Performance -Title 'Available memory' -Status Warning -Severity Medium -Summary "$percentAvailable% memory is currently available." -Evidence $os -Recommendation 'Review memory pressure and high-usage processes.'
         } else {
             New-ArchesResult -Id 'PERF-MEM-001' -Category Performance -Title 'Available memory' -Status Pass -Summary "$percentAvailable% memory is currently available." -Evidence $os
@@ -178,7 +183,7 @@ function Get-ArchesPerformanceDiagnostics {
     $results += Invoke-ArchesDiagnostic 'PERF-CPU-001' 'Performance' 'Processor utilization' {
         $samples = @(Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object -ExpandProperty LoadPercentage)
         $average = if ($samples.Count) { [math]::Round(($samples | Measure-Object -Average).Average, 1) } else { 0 }
-        if ($average -ge 90) {
+        if ($average -ge $Configuration.Thresholds.CpuWarningPercent) {
             New-ArchesResult -Id 'PERF-CPU-001' -Category Performance -Title 'Processor utilization' -Status Warning -Severity Medium -Summary "Processor load is currently $average%." -Evidence $samples -Recommendation 'Review sustained CPU use in Task Manager before taking corrective action.'
         } else {
             New-ArchesResult -Id 'PERF-CPU-001' -Category Performance -Title 'Processor utilization' -Status Pass -Summary "Processor load is currently $average%." -Evidence $samples
@@ -189,13 +194,13 @@ function Get-ArchesPerformanceDiagnostics {
 
 function Invoke-ArchesFullScan {
     [CmdletBinding()]
-    param()
+    param([Parameter(Mandatory)][object]$Configuration)
     @(
-        Get-ArchesSecurityDiagnostics
-        Get-ArchesNetworkDiagnostics
-        Get-ArchesSystemDiagnostics
-        Get-ArchesConnectedDeviceDiagnostics
-        Get-ArchesPerformanceDiagnostics
+        Get-ArchesSecurityDiagnostics -Configuration $Configuration
+        Get-ArchesNetworkDiagnostics -Configuration $Configuration
+        Get-ArchesSystemDiagnostics -Configuration $Configuration
+        Get-ArchesConnectedDeviceDiagnostics -Configuration $Configuration
+        Get-ArchesPerformanceDiagnostics -Configuration $Configuration
     ) | Sort-ArchesResults
 }
 

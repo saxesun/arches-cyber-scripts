@@ -5,6 +5,10 @@
   "Thresholds": {
     "DiskFreeWarningPercent": 20,
     "DiskFreeCriticalPercent": 10,
+    "MemoryAvailableWarningPercent": 20,
+    "MemoryAvailableCriticalPercent": 10,
+    "CpuWarningPercent": 90,
+    "RestartAgeWarningDays": 30,
     "LatencyWarningMs": 100,
     "PacketLossWarningPercent": 2
   },
