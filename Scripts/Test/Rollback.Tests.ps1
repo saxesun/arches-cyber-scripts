@@ -93,7 +93,7 @@ Describe 'Structured rollback records' {
 
         { Restore-ArchesRollback -Path $path -Approved -Confirm:$false } |
             Should -Throw '*integrity validation failed*'
-        Assert-MockCalled Set-ArchesFirewallProfileState -ModuleName Rollback -Times 0
+        Should -Invoke -CommandName Set-ArchesFirewallProfileState -ModuleName Rollback -Times 0 -Exactly
     }
 
     It 'rejects tampering with every security-relevant root field' -TestCases @(

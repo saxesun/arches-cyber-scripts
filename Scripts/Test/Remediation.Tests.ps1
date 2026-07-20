@@ -145,8 +145,8 @@ Describe 'Tiered remediation protection' {
             Invoke-ArchesRemediation -Id FIX-FW-001 -RollbackDirectory $TestDrive `
                 -Approved -Confirm:$false
         } | Should -Throw '*refused*No firewall settings were changed*'
-        Assert-MockCalled Get-ArchesFirewallProfileState -ModuleName Remediation -Times 0
-        Assert-MockCalled Set-ArchesFirewallProfileState -ModuleName Remediation -Times 0
+        Should -Invoke -CommandName Get-ArchesFirewallProfileState -ModuleName Remediation -Times 0 -Exactly
+        Should -Invoke -CommandName Set-ArchesFirewallProfileState -ModuleName Remediation -Times 0 -Exactly
     }
 
     It 'reports the application failure after targeted rollback succeeds' {
