@@ -12,9 +12,17 @@ Describe 'Tiered remediation protection' {
                 param([string]$ErrorAction)
             }
         }
+        if (-not (Get-Command Get-CimInstance -ErrorAction SilentlyContinue)) {
+            function global:Get-CimInstance {
+                param([string]$ClassName, [string]$ErrorAction)
+            }
+        }
     }
 
     BeforeEach {
+        Mock Get-ArchesRollbackIntegrityKey -ModuleName Rollback {
+            [byte[]](1..32)
+        }
         Get-ChildItem -LiteralPath $TestDrive -Filter 'Rollback_*.json' -File -ErrorAction SilentlyContinue |
             Remove-Item -Force
         $script:firewallState = @{
@@ -24,6 +32,9 @@ Describe 'Tiered remediation protection' {
         }
         $script:sawPendingBeforeChange = $false
         Mock Test-ArchesAdministrator -ModuleName Remediation { $true }
+        Mock Get-ArchesFirewallManagementState -ModuleName Remediation {
+            [PSCustomObject]@{ Status = 'Unmanaged'; Signals = @(); Details = 'Unmanaged test system.' }
+        }
         Mock Get-ArchesFirewallProfileState -ModuleName Remediation {
             if ($Profile) {
                 return @($Profile | ForEach-Object {
@@ -80,6 +91,62 @@ Describe 'Tiered remediation protection' {
     It 'requires approval before remediation' {
         { Invoke-ArchesRemediation -Id FIX-FW-001 -RollbackDirectory $TestDrive -Confirm:$false } |
             Should -Throw '*explicit approval*'
+    }
+
+    It 'detects an unmanaged firewall ownership state' {
+        Mock Get-CimInstance -ModuleName Remediation {
+            [PSCustomObject]@{ PartOfDomain = $false }
+        }
+        Mock Test-Path -ModuleName Remediation { $false }
+
+        $state = Get-ArchesFirewallManagementState
+
+        $state.Status | Should -Be 'Unmanaged'
+    }
+
+    It 'detects managed firewall ownership' {
+        Mock Get-CimInstance -ModuleName Remediation {
+            [PSCustomObject]@{ PartOfDomain = $true }
+        }
+        Mock Test-Path -ModuleName Remediation { $false }
+
+        $state = Get-ArchesFirewallManagementState
+
+        $state.Status | Should -Be 'Managed'
+        $state.Signals | Should -Contain 'Active Directory domain membership'
+    }
+
+    It 'returns Unknown when ownership data is inconclusive' {
+        Mock Get-CimInstance -ModuleName Remediation { $null }
+        Mock Test-Path -ModuleName Remediation { $false }
+
+        (Get-ArchesFirewallManagementState).Status | Should -Be 'Unknown'
+    }
+
+    It 'returns Unknown when management detection fails' {
+        Mock Get-CimInstance -ModuleName Remediation { throw 'CIM unavailable' }
+
+        $state = Get-ArchesFirewallManagementState
+
+        $state.Status | Should -Be 'Unknown'
+        $state.Details | Should -Match 'CIM unavailable'
+    }
+
+    It 'refuses managed or unknown firewall ownership before reading or changing profiles' -TestCases @(
+        @{ State = 'Managed'; Details = 'Group Policy firewall policy detected.' }
+        @{ State = 'Unknown'; Details = 'Ownership detection failed.' }
+    ) {
+        param($State, $Details)
+        Mock Get-ArchesFirewallManagementState -ModuleName Remediation {
+            [PSCustomObject]@{ Status = $State; Signals = @(); Details = $Details }
+        }
+
+        {
+            Invoke-ArchesRemediation -Id FIX-FW-001 -RollbackDirectory $TestDrive `
+                -Approved -Confirm:$false
+        } | Should -Throw '*refused*No firewall settings were changed*'
+        Assert-MockCalled Get-ArchesFirewallProfileState -ModuleName Remediation -Times 0
+        Assert-MockCalled Set-ArchesFirewallProfileState -ModuleName Remediation -Times 0
     }
 
     It 'reports the application failure after targeted rollback succeeds' {

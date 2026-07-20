@@ -1,5 +1,62 @@
 Set-StrictMode -Version 2.0
 
+function Get-ArchesFirewallManagementState {
+    [CmdletBinding()]
+    param()
+    try {
+        $computerSystem = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
+        if ($null -eq $computerSystem -or $null -eq $computerSystem.PartOfDomain) {
+            return [PSCustomObject]@{
+                Status = 'Unknown'
+                Signals = @()
+                Details = 'Domain membership could not be determined.'
+            }
+        }
+
+        $signals = @()
+        if ([bool]$computerSystem.PartOfDomain) {
+            $signals += 'Active Directory domain membership'
+        }
+        $managedPolicyPaths = [ordered]@{
+            'Group Policy firewall policy' = 'HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall'
+            'MDM firewall policy' = 'HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Firewall'
+        }
+        foreach ($signal in $managedPolicyPaths.Keys) {
+            if (Test-Path -LiteralPath $managedPolicyPaths[$signal] -PathType Container -ErrorAction Stop) {
+                $signals += $signal
+            }
+        }
+
+        $omadmPath = 'HKLM:\SOFTWARE\Microsoft\Provisioning\OMADM\Accounts'
+        if (Test-Path -LiteralPath $omadmPath -PathType Container -ErrorAction Stop) {
+            $managementAccounts = @(Get-ChildItem -LiteralPath $omadmPath -ErrorAction Stop)
+            if ($managementAccounts.Count) {
+                $signals += 'Active MDM enrollment'
+            }
+        }
+
+        if ($signals.Count) {
+            return [PSCustomObject]@{
+                Status = 'Managed'
+                Signals = @($signals)
+                Details = "Firewall ownership is organization-managed: $($signals -join ', ')."
+            }
+        }
+        [PSCustomObject]@{
+            Status = 'Unmanaged'
+            Signals = @()
+            Details = 'No domain membership, firewall policy registry keys, or active MDM enrollment were detected.'
+        }
+    }
+    catch {
+        [PSCustomObject]@{
+            Status = 'Unknown'
+            Signals = @()
+            Details = "Firewall management ownership could not be determined safely: $($_.Exception.Message)"
+        }
+    }
+}
+
 function Get-ArchesRemediationCatalog {
     @(
         [PSCustomObject][ordered]@{
@@ -11,6 +68,7 @@ function Get-ArchesRemediationCatalog {
             Reversible = $true
             ProtectionTier = 'ConfigOnly'
             AllowWithoutRestorePoint = $false
+            ManagementCheck = 'Refuse domain, Group Policy, MDM, or unknown ownership.'
         }
         [PSCustomObject][ordered]@{
             Id = 'FIX-DNS-001'
@@ -21,6 +79,7 @@ function Get-ArchesRemediationCatalog {
             Reversible = $false
             ProtectionTier = 'ConfigOnly'
             AllowWithoutRestorePoint = $false
+            ManagementCheck = 'Not applicable to resolver cache contents.'
         }
     )
 }
@@ -64,6 +123,10 @@ function Invoke-ArchesFirewallRemediation {
     )
     if (-not (Test-ArchesAdministrator)) {
         throw 'Administrator privileges are required to change firewall profiles.'
+    }
+    $managementState = Get-ArchesFirewallManagementState
+    if ($managementState.Status -ne 'Unmanaged') {
+        throw "Firewall remediation refused. $($managementState.Details) No firewall settings were changed."
     }
     $before = @(Get-ArchesFirewallProfileState -Profile Domain, Private, Public)
     $disabled = @($before | Where-Object { -not $_.Enabled })
@@ -157,4 +220,4 @@ function Invoke-ArchesRemediation {
     }
 }
 
-Export-ModuleMember -Function Get-ArchesRemediationCatalog, Invoke-ArchesRemediation
+Export-ModuleMember -Function Get-ArchesFirewallManagementState, Get-ArchesRemediationCatalog, Invoke-ArchesRemediation

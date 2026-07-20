@@ -158,7 +158,7 @@ Prohibited in rollback and remediation code:
 
 | ID | Action | Tier | Reversible | Required safety gap before broader use |
 |---|---|---|---:|---|
-| `FIX-FW-001` | Enable disabled Domain, Private, or Public firewall profiles | ConfigOnly | Yes | Detect policy/management ownership before changing |
+| `FIX-FW-001` | Enable disabled Domain, Private, or Public firewall profiles | ConfigOnly | Yes | Implemented: refuse domain membership, Group Policy firewall keys, active MDM enrollment, or unknown ownership |
 | `FIX-DNS-001` | Flush DNS resolver cache | ConfigOnly | No | Explain that previous cache contents cannot be restored |
 
 Additional candidates remain unapproved until individually reviewed against this policy. Reliability takes precedence over catalog size.
