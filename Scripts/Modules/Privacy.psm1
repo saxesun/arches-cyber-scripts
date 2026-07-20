@@ -3,7 +3,7 @@ Set-StrictMode -Version 2.0
 function Get-ArchesEvidenceAllowlist {
     @{
         'SEC-FW-001' = @('DisabledProfiles', 'ObservedProfiles')
-        'SEC-AV-001' = @('Product', 'AntivirusEnabled', 'RealTimeProtectionEnabled')
+        'SEC-AV-001' = @('SecurityCenterAvailable', 'RegisteredProducts', 'ActiveThirdPartyProducts', 'DefenderAvailable', 'DefenderEnabled', 'DefenderRealTimeEnabled', 'DefenderMode', 'Managed', 'ConflictingSignals')
         'SEC-RDP-001' = @('RegistryValue')
         'SEC-BL-001' = @('MountPoint', 'VolumeStatus', 'ProtectionStatus', 'EncryptionPercentage')
         'SEC-ADM-001' = @('PrincipalCount')

@@ -63,6 +63,8 @@ Duplicate finding IDs are rejected. Individual diagnostic failures are isolated.
 - TPM and Secure Boot
 - managed-control awareness for domain, MDM, RMM, and third-party security
 
+Antivirus diagnosis correlates Windows Security Center registrations with Defender state and policy clues. Active registered third-party antivirus with Defender passive or inactive is not a failure. Unavailable Security Center, managed ambiguity, unavailable Defender state, and conflicting product signals are `Unknown`. A confirmed `Fail` requires available, consistent evidence that no registered product is active.
+
 ### Windows and hardware
 
 - Windows Update health and update age
@@ -204,7 +206,7 @@ Baseline reviewed on 2026-07-19 at `diagnostics-module` commit `e552450`.
 
 - Complete console output is currently the default; problems-only requires `-ProblemsOnly`.
 - The result model lacks business impact, explicit remediation availability, and richer technical/client separation.
-- Current diagnostics cover only part of the stated scope; third-party antivirus, update age, users, password policy, adapter addressing, latency/packet loss, listening processes, startup/service failures, and targeted device diagnostics remain incomplete in the modular Phase 1 path.
+- Current diagnostics cover only part of the stated scope; update age, users, password policy, adapter addressing, latency/packet loss, listening processes, startup/service failures, and targeted device diagnostics remain incomplete in the modular Phase 1 path.
 - Reports are files in one output directory, not a unique directory per run; they omit scan type, script version, elevation state, business impact, and clearly separated raw evidence.
 - Report/rollback retention settings are validated but automated scoped retention behavior is incomplete.
 - The launcher reports only a generic PowerShell exit code; the required exit-code contract is not implemented.

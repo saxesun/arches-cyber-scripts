@@ -111,6 +111,103 @@ function Resolve-ArchesDnsBounded {
     }
 }
 
+function Get-ArchesSecurityCenterAntivirusProducts {
+    $products = @(Get-CimInstance -Namespace 'root/SecurityCenter2' `
+        -ClassName AntiVirusProduct -ErrorAction Stop)
+    @($products | ForEach-Object {
+        $state = [int]$_.productState
+        $stateByte = ($state -shr 8) -band 0xff
+        [PSCustomObject]@{
+            Product = [string]$_.displayName
+            Active = $stateByte -in @(0x10, 0x11)
+            IsMicrosoft = [string]$_.displayName -match 'Microsoft Defender|Windows Defender'
+        }
+    })
+}
+
+function Get-ArchesDefenderDiagnosticState {
+    $status = Get-MpComputerStatus -ErrorAction Stop
+    $managed = Test-Path -LiteralPath 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender' `
+        -PathType Container -ErrorAction Stop
+    [PSCustomObject]@{
+        Available = $true
+        AntivirusEnabled = [bool]$status.AntivirusEnabled
+        RealTimeProtectionEnabled = [bool]$status.RealTimeProtectionEnabled
+        RunningMode = [string]$status.AMRunningMode
+        Managed = [bool]$managed
+    }
+}
+
+function Get-ArchesAntivirusDiagnostic {
+    $securityCenterAvailable = $true
+    $defenderAvailable = $true
+    try {
+        $products = @(Get-ArchesSecurityCenterAntivirusProducts)
+    }
+    catch {
+        $securityCenterAvailable = $false
+        $products = @()
+    }
+    try {
+        $defender = Get-ArchesDefenderDiagnosticState
+    }
+    catch {
+        $defenderAvailable = $false
+        $defender = $null
+    }
+
+    $thirdPartyActive = @($products | Where-Object { $_.Active -and -not $_.IsMicrosoft })
+    $registeredDefender = @($products | Where-Object IsMicrosoft)
+    $defenderActive = $defenderAvailable -and $defender.AntivirusEnabled -and
+        $defender.RealTimeProtectionEnabled
+    $defenderPassive = $defenderAvailable -and $defender.RunningMode -match 'Passive'
+    $conflicting = $false
+    if ($defenderAvailable -and $registeredDefender.Count) {
+        $registeredDefenderActive = @($registeredDefender | Where-Object Active).Count -gt 0
+        $conflicting = $registeredDefenderActive -ne [bool]$defenderActive
+    }
+    $evidence = [PSCustomObject]@{
+        SecurityCenterAvailable = $securityCenterAvailable
+        RegisteredProducts = @($products | ForEach-Object Product)
+        ActiveThirdPartyProducts = @($thirdPartyActive | ForEach-Object Product)
+        DefenderAvailable = $defenderAvailable
+        DefenderEnabled = if ($defenderAvailable) { [bool]$defender.AntivirusEnabled } else { $null }
+        DefenderRealTimeEnabled = if ($defenderAvailable) { [bool]$defender.RealTimeProtectionEnabled } else { $null }
+        DefenderMode = if ($defenderAvailable) { $defender.RunningMode } else { $null }
+        Managed = if ($defenderAvailable) { [bool]$defender.Managed } else { $null }
+        ConflictingSignals = $conflicting
+    }
+
+    if (-not $securityCenterAvailable) {
+        return New-ArchesResult -Id 'SEC-AV-001' -Category Security -Title 'Antivirus protection' `
+            -Status Unknown -Severity Info -Summary 'Windows Security Center antivirus registration is unavailable, so protection ownership cannot be established safely.' `
+            -Evidence $evidence -Recommendation 'Verify registered antivirus products and their active state manually.'
+    }
+    if ($conflicting) {
+        return New-ArchesResult -Id 'SEC-AV-001' -Category Security -Title 'Antivirus protection' `
+            -Status Unknown -Severity Info -Summary 'Security Center and Defender report conflicting antivirus state.' `
+            -Evidence $evidence -Recommendation 'Resolve the conflicting product state before judging protection health.'
+    }
+    if ($thirdPartyActive.Count -and ($defenderPassive -or -not $defenderActive)) {
+        return New-ArchesResult -Id 'SEC-AV-001' -Category Security -Title 'Antivirus protection' `
+            -Status Pass -Summary 'An active third-party antivirus product is registered; Defender inactivity or passive mode is expected.' `
+            -Evidence $evidence
+    }
+    if ($defenderActive) {
+        return New-ArchesResult -Id 'SEC-AV-001' -Category Security -Title 'Antivirus protection' `
+            -Status Pass -Summary 'Microsoft Defender antivirus and real-time protection are active.' `
+            -Evidence $evidence
+    }
+    if (-not $defenderAvailable -or ($null -ne $defender -and $defender.Managed)) {
+        return New-ArchesResult -Id 'SEC-AV-001' -Category Security -Title 'Antivirus protection' `
+            -Status Unknown -Severity Info -Summary 'Antivirus state is unavailable or policy-managed and active protection could not be established safely.' `
+            -Evidence $evidence -Recommendation 'Verify the managing security product and policy state.'
+    }
+    New-ArchesResult -Id 'SEC-AV-001' -Category Security -Title 'Antivirus protection' `
+        -Status Fail -Severity High -Summary 'No active registered antivirus protection was detected.' `
+        -Evidence $evidence -Recommendation 'Confirm product health and enable an approved antivirus product.'
+}
+
 function Get-ArchesSecurityDiagnostics {
     param([Parameter(Mandatory)][object]$Configuration)
     $results = @()
@@ -128,15 +225,7 @@ function Get-ArchesSecurityDiagnostics {
         }
     }
     $results += Invoke-ArchesDiagnostic 'SEC-AV-001' 'Security' 'Antivirus protection' {
-        $av = Get-MpComputerStatus -ErrorAction Stop
-        if ($av.AntivirusEnabled -and $av.RealTimeProtectionEnabled) {
-            New-ArchesResult -Id 'SEC-AV-001' -Category Security -Title 'Antivirus protection' -Status Pass -Summary 'Microsoft Defender antivirus and real-time protection are enabled.' `
-                -Evidence ([PSCustomObject]@{ Product='Microsoft Defender'; AntivirusEnabled=[bool]$av.AntivirusEnabled; RealTimeProtectionEnabled=[bool]$av.RealTimeProtectionEnabled })
-        } else {
-            New-ArchesResult -Id 'SEC-AV-001' -Category Security -Title 'Antivirus protection' -Status Fail -Severity Critical -Summary 'Antivirus or real-time protection is disabled.' `
-                -Evidence ([PSCustomObject]@{ Product='Microsoft Defender'; AntivirusEnabled=[bool]$av.AntivirusEnabled; RealTimeProtectionEnabled=[bool]$av.RealTimeProtectionEnabled }) `
-                -Recommendation 'Enable antivirus and real-time protection immediately.'
-        }
+        Get-ArchesAntivirusDiagnostic
     }
     $results += Invoke-ArchesDiagnostic 'SEC-RDP-001' 'Security' 'Remote Desktop' {
         $rdp = Get-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -ErrorAction Stop
@@ -373,4 +462,4 @@ function Invoke-ArchesFullScan {
 Export-ModuleMember -Function Test-ArchesAdministrator, Get-ArchesSecurityDiagnostics, `
     Get-ArchesNetworkDiagnostics, Get-ArchesSystemDiagnostics, `
     Get-ArchesConnectedDeviceDiagnostics, Get-ArchesPerformanceDiagnostics, `
-    Invoke-ArchesFullScan
+    Invoke-ArchesFullScan, Get-ArchesAntivirusDiagnostic
