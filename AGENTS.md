@@ -66,4 +66,3 @@ These rules apply to the entire repository. Arches Cyber Phase 1 is a Windows Po
 - Keep Windows GitHub Actions green.
 - CI is not a substitute for the required Windows 11 VM validation in `Docs/PHASE1-SPEC.md`.
 - Never claim client readiness until real-machine validation passes. Before that gate, call the project an MVP candidate or development build.
-
