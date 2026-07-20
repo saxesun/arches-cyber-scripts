@@ -1,36 +1,38 @@
 $root = Split-Path -Parent $PSScriptRoot
 Import-Module (Join-Path $root 'Modules\Config.psm1') -Force
 
-function New-TestConfiguration {
-    [PSCustomObject]@{
-        SchemaVersion = 1
-        ReportRetentionDays = 30
-        RollbackRetentionDays = 30
-        Thresholds = [PSCustomObject]@{
-            DiskFreeWarningPercent = 20
-            DiskFreeCriticalPercent = 10
-            MemoryAvailableWarningPercent = 20
-            MemoryAvailableCriticalPercent = 10
-            CpuWarningPercent = 90
-            RestartAgeWarningDays = 30
-            LatencyWarningMs = 100
-            PacketLossWarningPercent = 2
+Describe 'Phase 1 configuration' {
+    BeforeAll {
+        function New-TestConfiguration {
+            [PSCustomObject]@{
+                SchemaVersion = 1
+                ReportRetentionDays = 30
+                RollbackRetentionDays = 30
+                Thresholds = [PSCustomObject]@{
+                    DiskFreeWarningPercent = 20
+                    DiskFreeCriticalPercent = 10
+                    MemoryAvailableWarningPercent = 20
+                    MemoryAvailableCriticalPercent = 10
+                    CpuWarningPercent = 90
+                    RestartAgeWarningDays = 30
+                    LatencyWarningMs = 100
+                    PacketLossWarningPercent = 2
+                }
+                Safety = [PSCustomObject]@{
+                    RequireExplicitFixApproval = $true
+                    CreateRollbackBeforeChange = $true
+                    AllowNetworkReset = $false
+                    AllowStaticToDhcpChange = $false
+                }
+            }
         }
-        Safety = [PSCustomObject]@{
-            RequireExplicitFixApproval = $true
-            CreateRollbackBeforeChange = $true
-            AllowNetworkReset = $false
-            AllowStaticToDhcpChange = $false
+
+        function Save-TestConfiguration {
+            param([object]$Configuration, [string]$Path)
+            $Configuration | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $Path -Encoding UTF8
         }
     }
-}
 
-function Save-TestConfiguration {
-    param([object]$Configuration, [string]$Path)
-    $Configuration | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $Path -Encoding UTF8
-}
-
-Describe 'Phase 1 configuration' {
     It 'loads a valid configuration' {
         $path = Join-Path $TestDrive 'valid.json'
         Save-TestConfiguration -Configuration (New-TestConfiguration) -Path $path

@@ -3,6 +3,24 @@ Import-Module (Join-Path $root 'Modules\Results.psm1') -Force
 Import-Module (Join-Path $root 'Modules\Diagnostics.psm1') -Force
 
 Describe 'Configuration-driven diagnostic thresholds' {
+    BeforeAll {
+        if (-not (Get-Command Get-CimInstance -ErrorAction SilentlyContinue)) {
+            function global:Get-CimInstance {
+                param([string]$ClassName, [string]$Filter, [string]$ErrorAction)
+            }
+        }
+        if (-not (Get-Command Get-Tpm -ErrorAction SilentlyContinue)) {
+            function global:Get-Tpm {
+                param([string]$ErrorAction)
+            }
+        }
+        if (-not (Get-Command Get-Service -ErrorAction SilentlyContinue)) {
+            function global:Get-Service {
+                param([string]$Name, [string]$ErrorAction)
+            }
+        }
+    }
+
     BeforeEach {
         $configuration = [PSCustomObject]@{
             Thresholds = [PSCustomObject]@{
