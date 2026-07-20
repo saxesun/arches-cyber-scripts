@@ -9,6 +9,9 @@ Describe 'Windows DPAPI rollback integrity integration' -Skip:(-not $runningOnWi
 
     BeforeEach {
         $integrityPath = Join-Path $TestDrive 'ArchesCyber\rollback-integrity-key.json'
+        if (Test-Path -LiteralPath $integrityPath) {
+            Remove-Item -LiteralPath $integrityPath -Force
+        }
         Mock Get-ArchesRollbackIntegrityKeyPath -ModuleName Rollback {
             $integrityPath
         }
