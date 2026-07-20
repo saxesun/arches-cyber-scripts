@@ -1,7 +1,8 @@
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
 param(
     [Parameter(Mandatory)][ValidateSet('FIX-FW-001','FIX-DNS-001')][string]$Id,
-    [switch]$Approved
+    [switch]$Approved,
+    [switch]$ExternalProtectionConfirmed
 )
 
 $moduleRoot = Join-Path $PSScriptRoot 'Modules'
@@ -9,4 +10,6 @@ $moduleRoot = Join-Path $PSScriptRoot 'Modules'
     Import-Module (Join-Path $moduleRoot $_) -Force -ErrorAction Stop
 }
 $rollbackDirectory = Join-Path $PSScriptRoot 'Rollback'
-Invoke-ArchesRemediation -Id $Id -RollbackDirectory $rollbackDirectory -Approved:$Approved -WhatIf:$WhatIfPreference -Confirm:$false
+Invoke-ArchesRemediation -Id $Id -RollbackDirectory $rollbackDirectory `
+    -Approved:$Approved -ExternalProtectionConfirmed:$ExternalProtectionConfirmed `
+    -WhatIf:$WhatIfPreference -Confirm:$false
