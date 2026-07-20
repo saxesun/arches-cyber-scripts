@@ -98,8 +98,8 @@ Describe 'Structured rollback records' {
 
     It 'rejects tampering with every security-relevant root field' -TestCases @(
         @{ Field = 'ComputerName'; Value = 'OTHER-PC' }
-        @{ Field = 'RemediationId'; Value = 'FIX-FW-001' }
-        @{ Field = 'ProtectionTier'; Value = 'ConfigOnly' }
+        @{ Field = 'RemediationId'; Value = 'FIX-UNKNOWN-999' }
+        @{ Field = 'ProtectionTier'; Value = 'RestorePoint' }
         @{ Field = 'RecordId'; Value = '00000000-0000-0000-0000-000000000001' }
         @{ Field = 'Status'; Value = 'Applied' }
         @{ Field = 'AppliedAt'; Value = '2026-01-01T00:00:00.0000000Z' }
@@ -107,15 +107,7 @@ Describe 'Structured rollback records' {
         param($Field, $Value)
         $path = New-TestRecord
         $record = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
-        if ($Field -eq 'RemediationId') {
-            $record.RecordId = '00000000-0000-0000-0000-000000000002'
-        }
-        elseif ($Field -eq 'ProtectionTier') {
-            $record.CreatedAt = '2026-01-01T00:00:00.0000000Z'
-        }
-        else {
-            $record.$Field = $Value
-        }
+        $record.$Field = $Value
         $record | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $path -Encoding UTF8
         { Get-ArchesRollbackRecord -Path $path } | Should -Throw
     }
