@@ -3,6 +3,10 @@ Import-Module (Join-Path $root 'Modules\Rollback.psm1') -Force
 $runningOnWindows = $env:OS -eq 'Windows_NT'
 
 Describe 'Windows DPAPI rollback integrity integration' -Skip:(-not $runningOnWindows) {
+    BeforeAll {
+        $testRoot = Split-Path -Parent $PSScriptRoot
+    }
+
     BeforeEach {
         $integrityPath = Join-Path $TestDrive 'ArchesCyber\rollback-integrity-key.json'
         Mock Get-ArchesRollbackIntegrityKeyPath -ModuleName Rollback {
@@ -29,7 +33,7 @@ Describe 'Windows DPAPI rollback integrity integration' -Skip:(-not $runningOnWi
     It 'fails closed when the key cannot be read' {
         InModuleScope Rollback { Get-ArchesRollbackIntegrityKey } | Out-Null
         Mock Get-Content -ModuleName Rollback {
-            throw [UnauthorizedAccessException]::new('access denied')
+            throw [System.UnauthorizedAccessException]::new('access denied')
         }
         { InModuleScope Rollback { Get-ArchesRollbackIntegrityKey } } |
             Should -Throw '*could not be loaded safely*access denied*'
@@ -38,7 +42,7 @@ Describe 'Windows DPAPI rollback integrity integration' -Skip:(-not $runningOnWi
     It 'uses the current Windows user DPAPI context after reload' {
         $key = InModuleScope Rollback { Get-ArchesRollbackIntegrityKey }
         Remove-Module Rollback -Force
-        Import-Module (Join-Path $root 'Modules\Rollback.psm1') -Force
+        Import-Module (Join-Path $testRoot 'Modules\Rollback.psm1') -Force
         Mock Get-ArchesRollbackIntegrityKeyPath -ModuleName Rollback {
             $integrityPath
         }
@@ -47,7 +51,7 @@ Describe 'Windows DPAPI rollback integrity integration' -Skip:(-not $runningOnWi
     }
 
     It 'serializes concurrent key creation safely for the current user' {
-        $modulePath = Join-Path $root 'Modules\Rollback.psm1'
+        $modulePath = Join-Path $testRoot 'Modules\Rollback.psm1'
         $localAppData = Join-Path $TestDrive 'ConcurrentLocalAppData'
         $recordRoot = Join-Path $TestDrive 'ConcurrentRecords'
         $jobs = @(1..2 | ForEach-Object {

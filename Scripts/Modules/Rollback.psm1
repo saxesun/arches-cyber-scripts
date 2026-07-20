@@ -34,10 +34,10 @@ function Get-ArchesRollbackIntegrityKey {
                 throw 'The integrity key envelope has an unsupported schema or protection scope.'
             }
             $protectedKey = [Convert]::FromBase64String([string]$envelope.ProtectedKey)
-            $key = [Security.Cryptography.ProtectedData]::Unprotect(
+            $key = [System.Security.Cryptography.ProtectedData]::Unprotect(
                 $protectedKey,
                 $null,
-                [Security.Cryptography.DataProtectionScope]::CurrentUser
+                [System.Security.Cryptography.DataProtectionScope]::CurrentUser
             )
             if ($key.Length -ne 32) {
                 throw 'The unprotected integrity key has an invalid length.'
@@ -66,10 +66,10 @@ function Get-ArchesRollbackIntegrityKey {
         $key = New-ArchesRandomBytes -Count 32
         $temporaryPath = $null
         try {
-            $protectedKey = [Security.Cryptography.ProtectedData]::Protect(
+            $protectedKey = [System.Security.Cryptography.ProtectedData]::Protect(
                 $key,
                 $null,
-                [Security.Cryptography.DataProtectionScope]::CurrentUser
+                [System.Security.Cryptography.DataProtectionScope]::CurrentUser
             )
             $envelope = [PSCustomObject][ordered]@{
                 SchemaVersion = 1
