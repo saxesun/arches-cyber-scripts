@@ -156,11 +156,11 @@ function Export-ArchesReport {
     $administratorInventory = $safeResults | Where-Object Id -eq 'SEC-ADM-001' | Select-Object -First 1
     $userInventory = $safeResults | Where-Object Id -eq 'SEC-USERS-001' | Select-Object -First 1
     $inventoryCards = @(
-        [PSCustomObject]@{ Label='Active interfaces'; Value=if($networkInventory.Evidence){$networkInventory.Evidence.InterfaceCount}else{'Unavailable'} }
-        [PSCustomObject]@{ Label='Observed neighbors'; Value=if($neighborInventory.Evidence){$neighborInventory.Evidence.NeighborCount}else{'Unavailable'} }
-        [PSCustomObject]@{ Label='Firewall rules'; Value=if($firewallInventory.Evidence){$firewallInventory.Evidence.RuleCount}else{'Unavailable'} }
-        [PSCustomObject]@{ Label='Administrator principals'; Value=if($administratorInventory.Evidence){$administratorInventory.Evidence.PrincipalCount}else{'Unavailable'} }
-        [PSCustomObject]@{ Label='Local user accounts'; Value=if($userInventory.Evidence){$userInventory.Evidence.LocalUserCount}else{'Unavailable'} }
+        [PSCustomObject]@{ Label='Active interfaces'; Value=if($null -ne $networkInventory -and $null -ne $networkInventory.Evidence){$networkInventory.Evidence.InterfaceCount}else{'Unavailable'} }
+        [PSCustomObject]@{ Label='Observed neighbors'; Value=if($null -ne $neighborInventory -and $null -ne $neighborInventory.Evidence){$neighborInventory.Evidence.NeighborCount}else{'Unavailable'} }
+        [PSCustomObject]@{ Label='Firewall rules'; Value=if($null -ne $firewallInventory -and $null -ne $firewallInventory.Evidence){$firewallInventory.Evidence.RuleCount}else{'Unavailable'} }
+        [PSCustomObject]@{ Label='Administrator principals'; Value=if($null -ne $administratorInventory -and $null -ne $administratorInventory.Evidence){$administratorInventory.Evidence.PrincipalCount}else{'Unavailable'} }
+        [PSCustomObject]@{ Label='Local user accounts'; Value=if($null -ne $userInventory -and $null -ne $userInventory.Evidence){$userInventory.Evidence.LocalUserCount}else{'Unavailable'} }
     ) | ForEach-Object {
         '<div class="score"><span>{0}</span><strong>{1}</strong></div>' -f `
             (ConvertTo-ArchesHtml $_.Label), (ConvertTo-ArchesHtml $_.Value)

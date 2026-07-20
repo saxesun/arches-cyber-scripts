@@ -1,9 +1,8 @@
-$root = Split-Path -Parent $PSScriptRoot
-
 Describe 'Technical inventory safety and scope' {
     BeforeAll {
-        $diagnosticsSource = Get-Content -LiteralPath (Join-Path $root 'Modules\Diagnostics.psm1') -Raw
-        $privacySource = Get-Content -LiteralPath (Join-Path $root 'Modules\Privacy.psm1') -Raw
+        $script:technicalInventoryRoot = Split-Path -Parent $PSScriptRoot
+        $script:diagnosticsSource = Get-Content -LiteralPath (Join-Path $script:technicalInventoryRoot 'Modules\Diagnostics.psm1') -Raw
+        $script:privacySource = Get-Content -LiteralPath (Join-Path $script:technicalInventoryRoot 'Modules\Privacy.psm1') -Raw
     }
 
     It 'collects the requested read-only technician inventory' {
