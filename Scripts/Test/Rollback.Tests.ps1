@@ -4,17 +4,6 @@ Import-Module (Join-Path $root 'Modules\Rollback.psm1') -Force
 Describe 'Structured rollback records' {
     BeforeAll {
         $testRoot = Split-Path -Parent $PSScriptRoot
-        if (-not (Get-Command Get-NetFirewallProfile -ErrorAction SilentlyContinue)) {
-            function global:Get-NetFirewallProfile {
-                param([string[]]$Profile, [string]$ErrorAction)
-            }
-        }
-        if (-not (Get-Command Set-NetFirewallProfile -ErrorAction SilentlyContinue)) {
-            function global:Set-NetFirewallProfile {
-                param([string]$Profile, [bool]$Enabled, [string]$ErrorAction)
-            }
-        }
-
         function New-TestChange {
             param(
                 [string]$Target = 'Public',
@@ -50,10 +39,10 @@ Describe 'Structured rollback records' {
             Private = $true
             Public = $true
         }
-        Mock Set-NetFirewallProfile -ModuleName Rollback {
+        Mock Set-ArchesFirewallProfileState -ModuleName Rollback {
             $script:firewallState[$Profile] = [bool]$Enabled
         }
-        Mock Get-NetFirewallProfile -ModuleName Rollback {
+        Mock Get-ArchesFirewallProfileState -ModuleName Rollback {
             [PSCustomObject]@{ Name = $Profile; Enabled = [bool]$script:firewallState[$Profile] }
         }
     }
@@ -71,8 +60,8 @@ Describe 'Structured rollback records' {
         $path = New-TestRecord
         $json = Get-Content -LiteralPath $path -Raw
         $json | Should -Not -Match 'RestoreCommand|Command|ScriptBlock'
-        $json | Should -Match '"Before": false'
-        $json | Should -Match '"After": true'
+        $json | Should -Match '"Before":\s*false'
+        $json | Should -Match '"After":\s*true'
     }
 
     It 'rejects an unknown remediation id' {
@@ -126,16 +115,16 @@ Describe 'Structured rollback records' {
         $record.Status | Should -Be 'RolledBack'
         $script:firewallState.Domain | Should -BeFalse
         $script:firewallState.Private | Should -BeTrue
-        Assert-MockCalled Set-NetFirewallProfile -ModuleName Rollback -Times 1 `
+        Assert-MockCalled Set-ArchesFirewallProfileState -ModuleName Rollback -Times 1 `
             -ParameterFilter { $Profile -eq 'Domain' -and $Enabled -eq $false }
-        Assert-MockCalled Set-NetFirewallProfile -ModuleName Rollback -Times 1 `
+        Assert-MockCalled Set-ArchesFirewallProfileState -ModuleName Rollback -Times 1 `
             -ParameterFilter { $Profile -eq 'Private' -and $Enabled -eq $true }
     }
 
     It 'marks RollbackFailed when restored state cannot be verified' {
         $path = New-TestRecord
         Set-ArchesRollbackApplied -Path $path | Out-Null
-        Mock Get-NetFirewallProfile -ModuleName Rollback {
+        Mock Get-ArchesFirewallProfileState -ModuleName Rollback {
             [PSCustomObject]@{ Name = $Profile; Enabled = $true }
         }
 
@@ -160,7 +149,7 @@ Describe 'Structured rollback records' {
 
         $failedPath = New-TestRecord
         Set-ArchesRollbackApplied -Path $failedPath | Out-Null
-        Mock Get-NetFirewallProfile -ModuleName Rollback {
+        Mock Get-ArchesFirewallProfileState -ModuleName Rollback {
             [PSCustomObject]@{ Name = $Profile; Enabled = $true }
         }
         { Restore-ArchesRollback -Path $failedPath -Approved -Confirm:$false } | Should -Throw
@@ -175,7 +164,7 @@ Describe 'Structured rollback records' {
             Should -Throw '*explicit approval*'
         Restore-ArchesRollback -Path $path -WhatIf -Confirm:$false | Out-Null
         (Get-ArchesRollbackRecord -Path $path).Status | Should -Be 'Applied'
-        Assert-MockCalled Set-NetFirewallProfile -ModuleName Rollback -Times 0
+        Assert-MockCalled Set-ArchesFirewallProfileState -ModuleName Rollback -Times 0
     }
 
     It 'supports the trusted undo entry script in WhatIf mode' {

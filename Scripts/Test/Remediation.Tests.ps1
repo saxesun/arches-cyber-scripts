@@ -7,16 +7,6 @@ Describe 'Tiered remediation protection' {
         if (-not (Get-Command Test-ArchesAdministrator -ErrorAction SilentlyContinue)) {
             function global:Test-ArchesAdministrator { $true }
         }
-        if (-not (Get-Command Get-NetFirewallProfile -ErrorAction SilentlyContinue)) {
-            function global:Get-NetFirewallProfile {
-                param([string[]]$Profile, [string]$ErrorAction)
-            }
-        }
-        if (-not (Get-Command Set-NetFirewallProfile -ErrorAction SilentlyContinue)) {
-            function global:Set-NetFirewallProfile {
-                param([string]$Profile, [bool]$Enabled, [string]$ErrorAction)
-            }
-        }
         if (-not (Get-Command Clear-DnsClientCache -ErrorAction SilentlyContinue)) {
             function global:Clear-DnsClientCache {
                 param([string]$ErrorAction)
@@ -34,7 +24,7 @@ Describe 'Tiered remediation protection' {
         }
         $script:sawPendingBeforeChange = $false
         Mock Test-ArchesAdministrator -ModuleName Remediation { $true }
-        Mock Get-NetFirewallProfile -ModuleName Remediation {
+        Mock Get-ArchesFirewallProfileState -ModuleName Remediation {
             if ($Profile) {
                 return @($Profile | ForEach-Object {
                     [PSCustomObject]@{ Name = $_; Enabled = [bool]$script:firewallState[$_] }
@@ -46,7 +36,7 @@ Describe 'Tiered remediation protection' {
                 [PSCustomObject]@{ Name = 'Public'; Enabled = [bool]$script:firewallState.Public }
             )
         }
-        Mock Set-NetFirewallProfile -ModuleName Remediation {
+        Mock Set-ArchesFirewallProfileState -ModuleName Remediation {
             $rollbackFile = Get-ChildItem -LiteralPath $TestDrive -Filter 'Rollback_*.json' -File |
                 Select-Object -First 1
             if ($rollbackFile) {
@@ -93,7 +83,7 @@ Describe 'Tiered remediation protection' {
     }
 
     It 'reports the application failure after targeted rollback succeeds' {
-        Mock Set-NetFirewallProfile -ModuleName Remediation { throw 'application exploded' }
+        Mock Set-ArchesFirewallProfileState -ModuleName Remediation { throw 'application exploded' }
         Mock Restore-ArchesRollback -ModuleName Remediation {}
         { Invoke-ArchesRemediation -Id FIX-FW-001 -RollbackDirectory $TestDrive `
                 -Approved -Confirm:$false } |
@@ -103,7 +93,7 @@ Describe 'Tiered remediation protection' {
     }
 
     It 'reports both application and targeted rollback failures' {
-        Mock Set-NetFirewallProfile -ModuleName Remediation { throw 'application exploded' }
+        Mock Set-ArchesFirewallProfileState -ModuleName Remediation { throw 'application exploded' }
         Mock Restore-ArchesRollback -ModuleName Remediation { throw 'rollback exploded' }
         { Invoke-ArchesRemediation -Id FIX-FW-001 -RollbackDirectory $TestDrive `
                 -Approved -Confirm:$false } |

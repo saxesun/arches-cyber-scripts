@@ -233,13 +233,27 @@ function Set-ArchesRollbackApplied {
     $record
 }
 
+function Get-ArchesFirewallProfileState {
+    param([Parameter(Mandatory)][string[]]$Profile)
+    @(Get-NetFirewallProfile -Profile $Profile -ErrorAction Stop |
+        Select-Object Name, Enabled)
+}
+
+function Set-ArchesFirewallProfileState {
+    param(
+        [Parameter(Mandatory)][string]$Profile,
+        [Parameter(Mandatory)][bool]$Enabled
+    )
+    Set-NetFirewallProfile -Profile $Profile -Enabled $Enabled -ErrorAction Stop
+}
+
 function Restore-ArchesFirewallChanges {
     param([Parameter(Mandatory)][object]$Record)
     foreach ($change in @($Record.Changes)) {
-        Set-NetFirewallProfile -Profile $change.Target -Enabled ([bool]$change.Before) -ErrorAction Stop
+        Set-ArchesFirewallProfileState -Profile $change.Target -Enabled ([bool]$change.Before)
     }
     foreach ($change in @($Record.Changes)) {
-        $profile = Get-NetFirewallProfile -Profile $change.Target -ErrorAction Stop
+        $profile = Get-ArchesFirewallProfileState -Profile $change.Target
         if ($null -eq $profile -or [bool]$profile.Enabled -ne [bool]$change.Before) {
             throw "Firewall profile '$($change.Target)' did not return to Enabled=$($change.Before)."
         }
@@ -319,4 +333,5 @@ function Remove-ArchesExpiredRollback {
 
 Export-ModuleMember -Function New-ArchesRollbackRecord, Get-ArchesRollbackRecord, `
     Test-ArchesRollbackRecord, Set-ArchesRollbackApplied, Restore-ArchesRollback, `
-    Remove-ArchesExpiredRollback
+    Remove-ArchesExpiredRollback, Get-ArchesFirewallProfileState, `
+    Set-ArchesFirewallProfileState

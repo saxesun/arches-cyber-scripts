@@ -65,8 +65,7 @@ function Invoke-ArchesFirewallRemediation {
     if (-not (Test-ArchesAdministrator)) {
         throw 'Administrator privileges are required to change firewall profiles.'
     }
-    $before = @(Get-NetFirewallProfile -Profile Domain, Private, Public -ErrorAction Stop |
-        Select-Object Name, Enabled)
+    $before = @(Get-ArchesFirewallProfileState -Profile Domain, Private, Public)
     $disabled = @($before | Where-Object { -not $_.Enabled })
     if (-not $disabled.Count) {
         return [PSCustomObject]@{
@@ -91,10 +90,10 @@ function Invoke-ArchesFirewallRemediation {
 
     try {
         foreach ($change in $changes) {
-            Set-NetFirewallProfile -Profile $change.Target -Enabled $true -ErrorAction Stop
+            Set-ArchesFirewallProfileState -Profile $change.Target -Enabled $true
         }
         foreach ($change in $changes) {
-            $profile = Get-NetFirewallProfile -Profile $change.Target -ErrorAction Stop
+            $profile = Get-ArchesFirewallProfileState -Profile $change.Target
             if ($null -eq $profile -or -not [bool]$profile.Enabled) {
                 throw "Firewall profile '$($change.Target)' was not enabled after remediation."
             }
