@@ -193,7 +193,7 @@ Baseline reviewed on 2026-07-19 at `diagnostics-module` commit `e552450`.
 - Health rating names and basic deterministic scoring tests exist.
 - HTML, JSON, and CSV export exists with HTML encoding for current finding fields.
 - Firewall and DNS remediations are separated from diagnostics and require approval.
-- Version 2 data-only firewall rollback, trusted restore handlers, approval, `WhatIf`, and verification exist.
+- Version 3 data-only firewall rollback, HMAC integrity validation, trusted restore handlers, approval, `WhatIf`, and verification exist.
 - Parser/Pester validation runs in Windows GitHub Actions.
 
 ### Contradictions and incomplete requirements

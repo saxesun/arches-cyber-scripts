@@ -1,5 +1,232 @@
 Set-StrictMode -Version 2.0
 
+function Get-ArchesRollbackIntegrityKeyPath {
+    if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        throw 'Rollback integrity is unavailable because LOCALAPPDATA is not defined.'
+    }
+    Join-Path $env:LOCALAPPDATA 'ArchesCyber\rollback-integrity-key.json'
+}
+
+function New-ArchesRandomBytes {
+    param([Parameter(Mandatory)][ValidateRange(16, 1024)][int]$Count)
+    $bytes = New-Object byte[] $Count
+    $generator = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $generator.GetBytes($bytes)
+    }
+    finally {
+        $generator.Dispose()
+    }
+    $bytes
+}
+
+function Get-ArchesRollbackIntegrityKey {
+    $path = Get-ArchesRollbackIntegrityKeyPath
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+        try {
+            $envelope = Get-Content -LiteralPath $path -Raw -ErrorAction Stop |
+                ConvertFrom-Json -ErrorAction Stop
+            Assert-ArchesExactProperties -InputObject $envelope `
+                -Expected @('SchemaVersion', 'ProtectionScope', 'ProtectedKey') `
+                -Location 'integrity key envelope'
+            if ($envelope.SchemaVersion -notin @([int]1, [long]1) -or
+                $envelope.ProtectionScope -ne 'CurrentUser') {
+                throw 'The integrity key envelope has an unsupported schema or protection scope.'
+            }
+            $protectedKey = [Convert]::FromBase64String([string]$envelope.ProtectedKey)
+            $key = [Security.Cryptography.ProtectedData]::Unprotect(
+                $protectedKey,
+                $null,
+                [Security.Cryptography.DataProtectionScope]::CurrentUser
+            )
+            if ($key.Length -ne 32) {
+                throw 'The unprotected integrity key has an invalid length.'
+            }
+            return $key
+        }
+        catch {
+            throw "Rollback integrity key could not be loaded safely: $($_.Exception.Message)"
+        }
+    }
+
+    $directory = Split-Path -Parent $path
+    if (-not (Test-Path -LiteralPath $directory)) {
+        New-Item -ItemType Directory -Path $directory -Force -ErrorAction Stop | Out-Null
+    }
+    $key = New-ArchesRandomBytes -Count 32
+    try {
+        $protectedKey = [Security.Cryptography.ProtectedData]::Protect(
+            $key,
+            $null,
+            [Security.Cryptography.DataProtectionScope]::CurrentUser
+        )
+        $envelope = [PSCustomObject][ordered]@{
+            SchemaVersion = 1
+            ProtectionScope = 'CurrentUser'
+            ProtectedKey = [Convert]::ToBase64String($protectedKey)
+        }
+        $temporaryPath = "$path.tmp"
+        $envelope | ConvertTo-Json | Set-Content -LiteralPath $temporaryPath -Encoding UTF8
+        Move-Item -LiteralPath $temporaryPath -Destination $path -Force
+    }
+    catch {
+        throw "Rollback integrity key could not be created safely: $($_.Exception.Message)"
+    }
+    finally {
+        if ($null -ne $key) {
+            [Array]::Clear($key, 0, $key.Length)
+        }
+        if (Test-Path -LiteralPath "$path.tmp") {
+            Remove-Item -LiteralPath "$path.tmp" -Force -ErrorAction SilentlyContinue
+        }
+    }
+    Get-ArchesRollbackIntegrityKey
+}
+
+function Get-ArchesRollbackIntegrityKeyId {
+    param([Parameter(Mandatory)][byte[]]$Key)
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try {
+        ([BitConverter]::ToString($sha256.ComputeHash($Key))).Replace('-', '').ToLowerInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+    }
+}
+
+function ConvertTo-ArchesCanonicalTimestamp {
+    param([object]$Value)
+    if ($null -eq $Value) {
+        return $null
+    }
+    $parsed = [DateTimeOffset]::MinValue
+    if ($Value -is [datetime]) {
+        $parsed = [DateTimeOffset]$Value
+    }
+    elseif ($Value -is [DateTimeOffset]) {
+        $parsed = $Value
+    }
+    elseif (-not [DateTimeOffset]::TryParse(
+        [string]$Value,
+        [Globalization.CultureInfo]::InvariantCulture,
+        [Globalization.DateTimeStyles]::RoundtripKind,
+        [ref]$parsed
+    )) {
+        return [string]$Value
+    }
+    $parsed.ToUniversalTime().ToString('o', [Globalization.CultureInfo]::InvariantCulture)
+}
+
+function ConvertTo-ArchesRollbackIntegrityPayload {
+    param([Parameter(Mandatory)][object]$Record)
+    $changes = @($Record.Changes | ForEach-Object {
+        [PSCustomObject][ordered]@{
+            TargetType = $_.TargetType
+            Target = $_.Target
+            Property = $_.Property
+            Before = $_.Before
+            After = $_.After
+        }
+    })
+    $verification = if ($null -eq $Record.Verification) {
+        $null
+    }
+    else {
+        [PSCustomObject][ordered]@{
+            Succeeded = $Record.Verification.Succeeded
+            CheckedAt = ConvertTo-ArchesCanonicalTimestamp $Record.Verification.CheckedAt
+            Details = $Record.Verification.Details
+            Error = $Record.Verification.Error
+        }
+    }
+    [PSCustomObject][ordered]@{
+        SchemaVersion = $Record.SchemaVersion
+        RecordId = $Record.RecordId
+        RemediationId = $Record.RemediationId
+        ProtectionTier = $Record.ProtectionTier
+        ComputerName = $Record.ComputerName
+        CreatedAt = ConvertTo-ArchesCanonicalTimestamp $Record.CreatedAt
+        Status = $Record.Status
+        Changes = $changes
+        AppliedAt = ConvertTo-ArchesCanonicalTimestamp $Record.AppliedAt
+        RolledBackAt = ConvertTo-ArchesCanonicalTimestamp $Record.RolledBackAt
+        Verification = $verification
+    } | ConvertTo-Json -Depth 10 -Compress
+}
+
+function Get-ArchesRollbackIntegrityValue {
+    param(
+        [Parameter(Mandatory)][object]$Record,
+        [Parameter(Mandatory)][byte[]]$Key
+    )
+    $payload = ConvertTo-ArchesRollbackIntegrityPayload -Record $Record
+    $hmac = New-Object Security.Cryptography.HMACSHA256 -ArgumentList (,$Key)
+    try {
+        [Convert]::ToBase64String($hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes($payload)))
+    }
+    finally {
+        $hmac.Dispose()
+    }
+}
+
+function Test-ArchesFixedTimeString {
+    param(
+        [Parameter(Mandatory)][string]$Left,
+        [Parameter(Mandatory)][string]$Right
+    )
+    $leftBytes = [Text.Encoding]::UTF8.GetBytes($Left)
+    $rightBytes = [Text.Encoding]::UTF8.GetBytes($Right)
+    $difference = $leftBytes.Length -bxor $rightBytes.Length
+    $length = [math]::Max($leftBytes.Length, $rightBytes.Length)
+    for ($index = 0; $index -lt $length; $index++) {
+        $leftByte = if ($index -lt $leftBytes.Length) { $leftBytes[$index] } else { 0 }
+        $rightByte = if ($index -lt $rightBytes.Length) { $rightBytes[$index] } else { 0 }
+        $difference = $difference -bor ($leftByte -bxor $rightByte)
+    }
+    $difference -eq 0
+}
+
+function Set-ArchesRollbackIntegrity {
+    param([Parameter(Mandatory)][object]$Record)
+    $key = Get-ArchesRollbackIntegrityKey
+    try {
+        $Record.Integrity = [PSCustomObject][ordered]@{
+            Algorithm = 'HMAC-SHA256'
+            KeyId = Get-ArchesRollbackIntegrityKeyId -Key $key
+            Value = Get-ArchesRollbackIntegrityValue -Record $Record -Key $key
+        }
+    }
+    finally {
+        [Array]::Clear($key, 0, $key.Length)
+    }
+}
+
+function Assert-ArchesRollbackIntegrity {
+    param([Parameter(Mandatory)][object]$Record)
+    Assert-ArchesExactProperties -InputObject $Record.Integrity `
+        -Expected @('Algorithm', 'KeyId', 'Value') -Location 'Integrity'
+    if ($Record.Integrity.Algorithm -ne 'HMAC-SHA256') {
+        throw "Invalid rollback record: unsupported integrity algorithm '$($Record.Integrity.Algorithm)'."
+    }
+    if ($Record.Integrity.KeyId -isnot [string] -or
+        $Record.Integrity.KeyId -notmatch '^[a-f0-9]{64}$' -or
+        $Record.Integrity.Value -isnot [string]) {
+        throw 'Invalid rollback record: malformed integrity metadata.'
+    }
+    $key = Get-ArchesRollbackIntegrityKey
+    try {
+        $keyId = Get-ArchesRollbackIntegrityKeyId -Key $key
+        $expected = Get-ArchesRollbackIntegrityValue -Record $Record -Key $key
+        if (-not (Test-ArchesFixedTimeString -Left $Record.Integrity.KeyId -Right $keyId) -or
+            -not (Test-ArchesFixedTimeString -Left $Record.Integrity.Value -Right $expected)) {
+            throw 'Rollback record integrity validation failed. The record may have been modified or belongs to a different integrity key.'
+        }
+    }
+    finally {
+        [Array]::Clear($key, 0, $key.Length)
+    }
+}
+
 function Get-ArchesComputerName {
     if (-not [string]::IsNullOrWhiteSpace($env:COMPUTERNAME)) {
         return $env:COMPUTERNAME
@@ -73,10 +300,10 @@ function Test-ArchesRollbackRecord {
     Assert-ArchesExactProperties -InputObject $Record -Expected @(
         'SchemaVersion', 'RecordId', 'RemediationId', 'ProtectionTier',
         'ComputerName', 'CreatedAt', 'Status', 'Changes', 'AppliedAt',
-        'RolledBackAt', 'Verification'
+        'RolledBackAt', 'Verification', 'Integrity'
     ) -Location 'root'
 
-    if ($Record.SchemaVersion -notin @([int]2, [long]2)) {
+    if ($Record.SchemaVersion -notin @([int]3, [long]3)) {
         throw "Invalid rollback record: unsupported SchemaVersion '$($Record.SchemaVersion)'."
     }
     $recordGuid = [guid]::Empty
@@ -104,6 +331,7 @@ function Test-ArchesRollbackRecord {
     if (-not $changes.Count) {
         throw "Invalid rollback record: 'Changes' must contain at least one change."
     }
+    $changeKeys = @{}
     foreach ($change in $changes) {
         Assert-ArchesExactProperties -InputObject $change `
             -Expected @('TargetType', 'Target', 'Property', 'Before', 'After') -Location 'Changes[]'
@@ -122,28 +350,39 @@ function Test-ArchesRollbackRecord {
         if ($change.Before -eq $change.After) {
             throw "Invalid rollback record: Before and After must describe an actual change."
         }
+        $changeKey = '{0}|{1}|{2}' -f $change.TargetType, $change.Target, $change.Property
+        if ($changeKeys.ContainsKey($changeKey)) {
+            throw "Invalid rollback record: duplicate change target '$changeKey'."
+        }
+        $changeKeys[$changeKey] = $true
     }
 
     Assert-ArchesTimestamp -Value $Record.AppliedAt -Name 'AppliedAt' -AllowNull
     Assert-ArchesTimestamp -Value $Record.RolledBackAt -Name 'RolledBackAt' -AllowNull
     Assert-ArchesVerification -Verification $Record.Verification
 
-    if ($Record.Status -eq 'Pending' -and $null -ne $Record.AppliedAt) {
-        throw "Invalid rollback record: Pending records cannot have AppliedAt."
+    if ($Record.Status -eq 'Pending' -and
+        ($null -ne $Record.AppliedAt -or $null -ne $Record.RolledBackAt -or $null -ne $Record.Verification)) {
+        throw 'Invalid rollback record: Pending records cannot contain application, rollback, or verification state.'
     }
-    if ($Record.Status -eq 'Applied' -and $null -eq $Record.AppliedAt) {
-        throw "Invalid rollback record: Applied records require AppliedAt."
+    if ($Record.Status -eq 'Applied' -and
+        ($null -eq $Record.AppliedAt -or $null -ne $Record.RolledBackAt -or
+            $null -eq $Record.Verification -or -not $Record.Verification.Succeeded)) {
+        throw 'Invalid rollback record: Applied records require successful application verification and cannot contain rollback state.'
     }
     if ($Record.Status -eq 'RolledBack') {
-        if ($null -eq $Record.RolledBackAt -or $null -eq $Record.Verification -or -not $Record.Verification.Succeeded) {
-            throw "Invalid rollback record: RolledBack records require successful verification and RolledBackAt."
+        if ($null -eq $Record.AppliedAt -or $null -eq $Record.RolledBackAt -or
+            $null -eq $Record.Verification -or -not $Record.Verification.Succeeded) {
+            throw 'Invalid rollback record: RolledBack records require AppliedAt, successful verification, and RolledBackAt.'
         }
     }
     if ($Record.Status -eq 'RollbackFailed') {
-        if ($null -eq $Record.RolledBackAt -or $null -eq $Record.Verification -or $Record.Verification.Succeeded) {
-            throw "Invalid rollback record: RollbackFailed records require failed verification and RolledBackAt."
+        if ($null -eq $Record.RolledBackAt -or $null -eq $Record.Verification -or
+            $Record.Verification.Succeeded) {
+            throw 'Invalid rollback record: RollbackFailed records require failed verification and RolledBackAt.'
         }
     }
+    Assert-ArchesRollbackIntegrity -Record $Record
     $true
 }
 
@@ -152,6 +391,7 @@ function Save-ArchesRollbackRecord {
         [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)][object]$Record
     )
+    Set-ArchesRollbackIntegrity -Record $Record
     [void](Test-ArchesRollbackRecord -Record $Record)
     $temporaryPath = "$Path.tmp"
     try {
@@ -193,7 +433,7 @@ function New-ArchesRollbackRecord {
         New-Item -ItemType Directory -Path $Directory -Force | Out-Null
     }
     $record = [PSCustomObject][ordered]@{
-        SchemaVersion = 2
+        SchemaVersion = 3
         RecordId = [guid]::NewGuid().ToString()
         RemediationId = $RemediationId
         ProtectionTier = $ProtectionTier
@@ -204,8 +444,8 @@ function New-ArchesRollbackRecord {
         AppliedAt = $null
         RolledBackAt = $null
         Verification = $null
+        Integrity = $null
     }
-    [void](Test-ArchesRollbackRecord -Record $record)
     $path = Join-Path $Directory ("Rollback_{0}_{1}_{2}.json" -f $RemediationId, (Get-Date -Format 'yyyyMMdd_HHmmss'), $record.RecordId)
     Save-ArchesRollbackRecord -Path $path -Record $record
     $path

@@ -5,7 +5,9 @@ param(
 )
 
 $moduleRoot = Join-Path $PSScriptRoot 'Modules'
-Import-Module (Join-Path $moduleRoot 'Rollback.psm1') -Force -ErrorAction Stop
+if (-not (Get-Module -Name Rollback)) {
+    Import-Module (Join-Path $moduleRoot 'Rollback.psm1') -ErrorAction Stop
+}
 
 $record = Get-ArchesRollbackRecord -Path $Path
 Write-Host "Rollback record: $($record.RecordId)"

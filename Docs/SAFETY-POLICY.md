@@ -91,11 +91,11 @@ No current Phase 1 remediation is approved for this tier.
 
 ## Rollback record requirements
 
-Rollback schema version 2 contains data only:
+Rollback schema version 3 contains data only. Version 3 adds an `Integrity` object containing an HMAC-SHA256 key identifier and signature:
 
 ```json
 {
-  "SchemaVersion": 2,
+  "SchemaVersion": 3,
   "RecordId": "GUID",
   "RemediationId": "FIX-FW-001",
   "ProtectionTier": "ConfigOnly",
@@ -113,9 +113,18 @@ Rollback schema version 2 contains data only:
   ],
   "AppliedAt": null,
   "RolledBackAt": null,
-  "Verification": null
+  "Verification": null,
+  "Integrity": {
+    "Algorithm": "HMAC-SHA256",
+    "KeyId": "SHA-256 key identifier",
+    "Value": "Base64 HMAC"
+  }
 }
 ```
+
+The HMAC covers every security-relevant record field, including identity, computer binding, remediation and protection tier, timestamps, status, changes, and verification. Its random 256-bit key is stored outside the rollback directory and protected by Windows DPAPI for the current Windows user. Records are verified before status evaluation or trusted handler dispatch. Offline edits, copied records, use under another Windows account, and records signed by another installation therefore fail closed.
+
+This integrity mechanism does not protect against an attacker who can execute code as the same Windows user, read that user's DPAPI-protected data, or modify the trusted Arches Cyber scripts themselves. It is tamper detection for data at rest, not a substitute for Windows account security, filesystem permissions, code signing, or an enterprise key-management system.
 
 Allowed states are `Pending`, `Applied`, `RolledBack`, and `RollbackFailed`. State updates use atomic file replacement where practical.
 
@@ -159,4 +168,3 @@ Additional candidates remain unapproved until individually reviewed against this
 Automated tests must mock configuration-changing Windows commands and cover approval, `WhatIf`, validation rejection, exact restoration, verification failure, state transitions, and combined failure reporting.
 
 Real Windows 11 VM testing must exercise every approved remediation and undo path, management-policy conflicts, tampered records, reboot behavior where relevant, and verification that unrelated settings remain unchanged.
-

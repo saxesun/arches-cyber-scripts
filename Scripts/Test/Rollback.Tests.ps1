@@ -34,6 +34,9 @@ Describe 'Structured rollback records' {
     }
 
     BeforeEach {
+        Mock Get-ArchesRollbackIntegrityKey -ModuleName Rollback {
+            [byte[]](1..32)
+        }
         $script:firewallState = @{
             Domain = $true
             Private = $true
@@ -47,12 +50,14 @@ Describe 'Structured rollback records' {
         }
     }
 
-    It 'creates a version 2 Pending data-only record' {
+    It 'creates a version 3 Pending data-only record with integrity metadata' {
         $path = New-TestRecord
         $record = Get-ArchesRollbackRecord -Path $path
-        $record.SchemaVersion | Should -Be 2
+        $record.SchemaVersion | Should -Be 3
         $record.Status | Should -Be 'Pending'
         $record.ProtectionTier | Should -Be 'ConfigOnly'
+        $record.Integrity.Algorithm | Should -Be 'HMAC-SHA256'
+        $record.Integrity.Value | Should -Not -BeNullOrEmpty
         @($record.Changes).Count | Should -Be 1
     }
 
@@ -70,6 +75,51 @@ Describe 'Structured rollback records' {
         { Get-ArchesRollbackRecord -Path $path } | Should -Throw '*unknown RemediationId*'
     }
 
+    It 'rejects malformed integrity metadata' {
+        $path = New-TestRecord
+        $record = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        $record.Integrity.Value = 'not-base64-or-a-valid-signature'
+        $record | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $path -Encoding UTF8
+        { Get-ArchesRollbackRecord -Path $path } | Should -Throw '*integrity validation failed*'
+    }
+
+    It 'rejects schema-valid tampering before a firewall handler executes' {
+        $path = New-TestRecord
+        Set-ArchesRollbackApplied -Path $path | Out-Null
+        $record = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        $record.Changes[0].Before = $true
+        $record.Changes[0].After = $false
+        $record | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $path -Encoding UTF8
+
+        { Restore-ArchesRollback -Path $path -Approved -Confirm:$false } |
+            Should -Throw '*integrity validation failed*'
+        Assert-MockCalled Set-ArchesFirewallProfileState -ModuleName Rollback -Times 0
+    }
+
+    It 'rejects tampering with every security-relevant root field' -TestCases @(
+        @{ Field = 'ComputerName'; Value = 'OTHER-PC' }
+        @{ Field = 'RemediationId'; Value = 'FIX-FW-001' }
+        @{ Field = 'ProtectionTier'; Value = 'ConfigOnly' }
+        @{ Field = 'RecordId'; Value = '00000000-0000-0000-0000-000000000001' }
+        @{ Field = 'Status'; Value = 'Applied' }
+        @{ Field = 'AppliedAt'; Value = '2026-01-01T00:00:00.0000000Z' }
+    ) {
+        param($Field, $Value)
+        $path = New-TestRecord
+        $record = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        if ($Field -eq 'RemediationId') {
+            $record.RecordId = '00000000-0000-0000-0000-000000000002'
+        }
+        elseif ($Field -eq 'ProtectionTier') {
+            $record.CreatedAt = '2026-01-01T00:00:00.0000000Z'
+        }
+        else {
+            $record.$Field = $Value
+        }
+        $record | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $path -Encoding UTF8
+        { Get-ArchesRollbackRecord -Path $path } | Should -Throw
+    }
+
     It 'rejects an unknown target type' {
         $path = New-TestRecord
         $record = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
@@ -84,6 +134,15 @@ Describe 'Structured rollback records' {
         $record.Changes[0].Target = 'All'
         $record | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $path -Encoding UTF8
         { Get-ArchesRollbackRecord -Path $path } | Should -Throw '*unknown firewall profile*'
+    }
+
+    It 'rejects duplicate changes for the same profile and property' {
+        {
+            New-TestRecord -Changes @(
+                (New-TestChange -Target Public -Before $false -After $true),
+                (New-TestChange -Target Public -Before $true -After $false)
+            )
+        } | Should -Throw '*duplicate change target*'
     }
 
     It 'rejects a record from another computer' {
