@@ -7,6 +7,16 @@ function Get-ArchesRollbackIntegrityKeyPath {
     Join-Path $env:LOCALAPPDATA 'ArchesCyber\rollback-integrity-key.json'
 }
 
+function Initialize-ArchesProtectedData {
+    if ($null -eq ('System.Security.Cryptography.ProtectedData' -as [type])) {
+        Add-Type -AssemblyName System.Security -ErrorAction Stop
+    }
+
+    if ($null -eq ('System.Security.Cryptography.ProtectedData' -as [type])) {
+        throw 'Windows DPAPI support could not be loaded from the System.Security assembly.'
+    }
+}
+
 function New-ArchesRandomBytes {
     param([Parameter(Mandatory)][ValidateRange(16, 1024)][int]$Count)
     $bytes = New-Object byte[] $Count
@@ -21,6 +31,7 @@ function New-ArchesRandomBytes {
 }
 
 function Get-ArchesRollbackIntegrityKey {
+    Initialize-ArchesProtectedData
     $path = Get-ArchesRollbackIntegrityKeyPath
     if (Test-Path -LiteralPath $path -PathType Leaf) {
         try {
