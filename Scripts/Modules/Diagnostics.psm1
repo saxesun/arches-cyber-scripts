@@ -11,7 +11,8 @@ function Invoke-ArchesDiagnostic {
     try { & $Action }
     catch {
         New-ArchesResult -Id $Id -Category $Category -Title $Title -Status Error -Severity Medium `
-            -Summary 'The check could not complete.' -Evidence $_.Exception.Message `
+            -Summary 'The check could not complete.' `
+            -Evidence ([PSCustomObject]@{ ErrorType = $_.Exception.GetType().FullName }) `
             -Recommendation 'Review the log and rerun from an elevated Windows PowerShell session.'
     }
 }
@@ -24,24 +25,30 @@ function Get-ArchesSecurityDiagnostics {
         $disabled = @($profiles | Where-Object { -not $_.Enabled })
         if ($disabled.Count) {
             New-ArchesResult -Id 'SEC-FW-001' -Category Security -Title 'Windows Firewall' -Status Fail -Severity High `
-                -Summary "$($disabled.Count) firewall profile(s) disabled." -Evidence ($disabled.Name -join ', ') `
+                -Summary "$($disabled.Count) firewall profile(s) disabled." `
+                -Evidence ([PSCustomObject]@{ DisabledProfiles = @($disabled.Name); ObservedProfiles = @($profiles.Name) }) `
                 -Recommendation 'Enable all Windows Firewall profiles.' -RemediationId 'FIX-FW-001' -RequiresAdmin $true
         } else {
-            New-ArchesResult -Id 'SEC-FW-001' -Category Security -Title 'Windows Firewall' -Status Pass -Summary 'All firewall profiles are enabled.' -Evidence ($profiles.Name -join ', ')
+            New-ArchesResult -Id 'SEC-FW-001' -Category Security -Title 'Windows Firewall' -Status Pass -Summary 'All firewall profiles are enabled.' `
+                -Evidence ([PSCustomObject]@{ DisabledProfiles = @(); ObservedProfiles = @($profiles.Name) })
         }
     }
     $results += Invoke-ArchesDiagnostic 'SEC-AV-001' 'Security' 'Antivirus protection' {
         $av = Get-MpComputerStatus -ErrorAction Stop
         if ($av.AntivirusEnabled -and $av.RealTimeProtectionEnabled) {
-            New-ArchesResult -Id 'SEC-AV-001' -Category Security -Title 'Antivirus protection' -Status Pass -Summary 'Microsoft Defender antivirus and real-time protection are enabled.' -Evidence $av
+            New-ArchesResult -Id 'SEC-AV-001' -Category Security -Title 'Antivirus protection' -Status Pass -Summary 'Microsoft Defender antivirus and real-time protection are enabled.' `
+                -Evidence ([PSCustomObject]@{ Product='Microsoft Defender'; AntivirusEnabled=[bool]$av.AntivirusEnabled; RealTimeProtectionEnabled=[bool]$av.RealTimeProtectionEnabled })
         } else {
-            New-ArchesResult -Id 'SEC-AV-001' -Category Security -Title 'Antivirus protection' -Status Fail -Severity Critical -Summary 'Antivirus or real-time protection is disabled.' -Evidence $av -Recommendation 'Enable antivirus and real-time protection immediately.'
+            New-ArchesResult -Id 'SEC-AV-001' -Category Security -Title 'Antivirus protection' -Status Fail -Severity Critical -Summary 'Antivirus or real-time protection is disabled.' `
+                -Evidence ([PSCustomObject]@{ Product='Microsoft Defender'; AntivirusEnabled=[bool]$av.AntivirusEnabled; RealTimeProtectionEnabled=[bool]$av.RealTimeProtectionEnabled }) `
+                -Recommendation 'Enable antivirus and real-time protection immediately.'
         }
     }
     $results += Invoke-ArchesDiagnostic 'SEC-RDP-001' 'Security' 'Remote Desktop' {
         $rdp = Get-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -ErrorAction Stop
         if ($rdp.fDenyTSConnections -eq 0) {
-            New-ArchesResult -Id 'SEC-RDP-001' -Category Security -Title 'Remote Desktop' -Status Warning -Severity Medium -Summary 'Remote Desktop is enabled.' -Evidence 'fDenyTSConnections=0' -Recommendation 'Disable RDP unless required, and never expose it directly to the internet.'
+            New-ArchesResult -Id 'SEC-RDP-001' -Category Security -Title 'Remote Desktop' -Status Warning -Severity Medium -Summary 'Remote Desktop is enabled.' `
+                -Evidence ([PSCustomObject]@{ RegistryValue = 0 }) -Recommendation 'Disable RDP unless required, and never expose it directly to the internet.'
         } else {
             New-ArchesResult -Id 'SEC-RDP-001' -Category Security -Title 'Remote Desktop' -Status Pass -Summary 'Remote Desktop is disabled.'
         }
@@ -49,9 +56,12 @@ function Get-ArchesSecurityDiagnostics {
     $results += Invoke-ArchesDiagnostic 'SEC-BL-001' 'Security' 'BitLocker protection' {
         $volume = Get-BitLockerVolume -MountPoint $env:SystemDrive -ErrorAction Stop
         if ([string]$volume.ProtectionStatus -eq 'On' -or [int]$volume.ProtectionStatus -eq 1) {
-            New-ArchesResult -Id 'SEC-BL-001' -Category Security -Title 'BitLocker protection' -Status Pass -Summary 'System drive protection is enabled.' -Evidence $volume
+            New-ArchesResult -Id 'SEC-BL-001' -Category Security -Title 'BitLocker protection' -Status Pass -Summary 'System drive protection is enabled.' `
+                -Evidence ([PSCustomObject]@{ MountPoint=[string]$volume.MountPoint; VolumeStatus=[string]$volume.VolumeStatus; ProtectionStatus=[string]$volume.ProtectionStatus; EncryptionPercentage=$volume.EncryptionPercentage })
         } else {
-            New-ArchesResult -Id 'SEC-BL-001' -Category Security -Title 'BitLocker protection' -Status Fail -Severity High -Summary 'System drive protection is not enabled.' -Evidence $volume -Recommendation 'Back up the recovery key and enable BitLocker where licensing and hardware support it.'
+            New-ArchesResult -Id 'SEC-BL-001' -Category Security -Title 'BitLocker protection' -Status Fail -Severity High -Summary 'System drive protection is not enabled.' `
+                -Evidence ([PSCustomObject]@{ MountPoint=[string]$volume.MountPoint; VolumeStatus=[string]$volume.VolumeStatus; ProtectionStatus=[string]$volume.ProtectionStatus; EncryptionPercentage=$volume.EncryptionPercentage }) `
+                -Recommendation 'Back up the recovery key and enable BitLocker where licensing and hardware support it.'
         }
     }
     $results += Invoke-ArchesDiagnostic 'SEC-SB-001' 'Security' 'Secure Boot' {
@@ -65,9 +75,11 @@ function Get-ArchesSecurityDiagnostics {
     $results += Invoke-ArchesDiagnostic 'SEC-ADM-001' 'Security' 'Local administrators' {
         $admins = @(Get-LocalGroupMember -Group 'Administrators' -ErrorAction Stop)
         if ($admins.Count -gt 3) {
-            New-ArchesResult -Id 'SEC-ADM-001' -Category Security -Title 'Local administrators' -Status Warning -Severity Medium -Summary "$($admins.Count) local administrator principals were found." -Evidence ($admins.Name -join ', ') -Recommendation 'Review each administrator and remove access that is not required.'
+            New-ArchesResult -Id 'SEC-ADM-001' -Category Security -Title 'Local administrators' -Status Warning -Severity Medium -Summary "$($admins.Count) local administrator principals were found." `
+                -Evidence ([PSCustomObject]@{ PrincipalCount = $admins.Count }) -Recommendation 'Review each administrator and remove access that is not required.'
         } else {
-            New-ArchesResult -Id 'SEC-ADM-001' -Category Security -Title 'Local administrators' -Status Pass -Summary "$($admins.Count) local administrator principal(s) found." -Evidence ($admins.Name -join ', ')
+            New-ArchesResult -Id 'SEC-ADM-001' -Category Security -Title 'Local administrators' -Status Pass -Summary "$($admins.Count) local administrator principal(s) found." `
+                -Evidence ([PSCustomObject]@{ PrincipalCount = $admins.Count })
         }
     }
     $results
@@ -79,21 +91,27 @@ function Get-ArchesNetworkDiagnostics {
     $results += Invoke-ArchesDiagnostic 'NET-GW-001' 'Network' 'Default gateway' {
         $route = Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop | Sort-Object RouteMetric | Select-Object -First 1
         if ($route -and (Test-Connection -ComputerName $route.NextHop -Count 1 -Quiet)) {
-            New-ArchesResult -Id 'NET-GW-001' -Category Network -Title 'Default gateway' -Status Pass -Summary 'The default gateway responds.' -Evidence $route.NextHop
+            New-ArchesResult -Id 'NET-GW-001' -Category Network -Title 'Default gateway' -Status Pass -Summary 'The default gateway responds.' `
+                -Evidence ([PSCustomObject]@{ NextHop=$route.NextHop; InterfaceAlias=$route.InterfaceAlias; RouteMetric=$route.RouteMetric })
         } else {
-            New-ArchesResult -Id 'NET-GW-001' -Category Network -Title 'Default gateway' -Status Fail -Severity High -Summary 'No responsive default gateway was found.' -Evidence $route -Recommendation 'Check the adapter, cable/Wi-Fi connection, DHCP lease, and router.'
+            New-ArchesResult -Id 'NET-GW-001' -Category Network -Title 'Default gateway' -Status Fail -Severity High -Summary 'No responsive default gateway was found.' `
+                -Evidence ([PSCustomObject]@{ NextHop=$route.NextHop; InterfaceAlias=$route.InterfaceAlias; RouteMetric=$route.RouteMetric }) `
+                -Recommendation 'Check the adapter, cable/Wi-Fi connection, DHCP lease, and router.'
         }
     }
     $results += Invoke-ArchesDiagnostic 'NET-DNS-001' 'Network' 'DNS resolution' {
         $answer = Resolve-DnsName -Name 'www.microsoft.com' -Type A -DnsOnly -ErrorAction Stop | Select-Object -First 1
-        New-ArchesResult -Id 'NET-DNS-001' -Category Network -Title 'DNS resolution' -Status Pass -Summary 'DNS resolution succeeded.' -Evidence $answer.IPAddress
+        New-ArchesResult -Id 'NET-DNS-001' -Category Network -Title 'DNS resolution' -Status Pass -Summary 'DNS resolution succeeded.' `
+            -Evidence ([PSCustomObject]@{ Query='www.microsoft.com'; IPAddress=$answer.IPAddress })
     }
     $results += Invoke-ArchesDiagnostic 'NET-INT-001' 'Network' 'Internet reachability' {
         $reachable = Test-NetConnection -ComputerName '1.1.1.1' -Port 443 -InformationLevel Quiet -WarningAction SilentlyContinue
         if ($reachable) {
-            New-ArchesResult -Id 'NET-INT-001' -Category Network -Title 'Internet reachability' -Status Pass -Summary 'Outbound TCP 443 connectivity succeeded.' -Evidence '1.1.1.1:443'
+            New-ArchesResult -Id 'NET-INT-001' -Category Network -Title 'Internet reachability' -Status Pass -Summary 'Outbound TCP 443 connectivity succeeded.' `
+                -Evidence ([PSCustomObject]@{ Target='1.1.1.1:443'; Protocol='TCP' })
         } else {
-            New-ArchesResult -Id 'NET-INT-001' -Category Network -Title 'Internet reachability' -Status Fail -Severity High -Summary 'Outbound TCP 443 connectivity failed.' -Evidence '1.1.1.1:443' -Recommendation 'Check WAN status, firewall policy, captive portals, and upstream service availability.'
+            New-ArchesResult -Id 'NET-INT-001' -Category Network -Title 'Internet reachability' -Status Fail -Severity High -Summary 'Outbound TCP 443 connectivity failed.' `
+                -Evidence ([PSCustomObject]@{ Target='1.1.1.1:443'; Protocol='TCP' }) -Recommendation 'Check WAN status, firewall policy, captive portals, and upstream service availability.'
         }
     }
     $results
@@ -106,30 +124,38 @@ function Get-ArchesSystemDiagnostics {
         $disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'" -ErrorAction Stop
         $percent = if ($disk.Size) { [math]::Round(($disk.FreeSpace / $disk.Size) * 100, 1) } else { 0 }
         if ($percent -le $Configuration.Thresholds.DiskFreeCriticalPercent) {
-            New-ArchesResult -Id 'SYS-DISK-001' -Category Hardware -Title 'System drive free space' -Status Fail -Severity High -Summary "Only $percent% free space remains." -Evidence $disk -Recommendation 'Free disk space before updates or normal operation begin failing.'
+            New-ArchesResult -Id 'SYS-DISK-001' -Category Hardware -Title 'System drive free space' -Status Fail -Severity High -Summary "Only $percent% free space remains." `
+                -Evidence ([PSCustomObject]@{ DeviceId=$disk.DeviceID; SizeBytes=$disk.Size; FreeBytes=$disk.FreeSpace; PercentFree=$percent }) -Recommendation 'Free disk space before updates or normal operation begin failing.'
         } elseif ($percent -lt $Configuration.Thresholds.DiskFreeWarningPercent) {
-            New-ArchesResult -Id 'SYS-DISK-001' -Category Hardware -Title 'System drive free space' -Status Warning -Severity Medium -Summary "$percent% free space remains." -Evidence $disk -Recommendation 'Plan disk cleanup or storage expansion.'
+            New-ArchesResult -Id 'SYS-DISK-001' -Category Hardware -Title 'System drive free space' -Status Warning -Severity Medium -Summary "$percent% free space remains." `
+                -Evidence ([PSCustomObject]@{ DeviceId=$disk.DeviceID; SizeBytes=$disk.Size; FreeBytes=$disk.FreeSpace; PercentFree=$percent }) -Recommendation 'Plan disk cleanup or storage expansion.'
         } else {
-            New-ArchesResult -Id 'SYS-DISK-001' -Category Hardware -Title 'System drive free space' -Status Pass -Summary "$percent% free space remains." -Evidence $disk
+            New-ArchesResult -Id 'SYS-DISK-001' -Category Hardware -Title 'System drive free space' -Status Pass -Summary "$percent% free space remains." `
+                -Evidence ([PSCustomObject]@{ DeviceId=$disk.DeviceID; SizeBytes=$disk.Size; FreeBytes=$disk.FreeSpace; PercentFree=$percent })
         }
     }
     $results += Invoke-ArchesDiagnostic 'SYS-BOOT-001' 'Performance' 'Time since restart' {
         $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
         $days = [math]::Floor(((Get-Date) - $os.LastBootUpTime).TotalDays)
         if ($days -ge $Configuration.Thresholds.RestartAgeWarningDays) {
-            New-ArchesResult -Id 'SYS-BOOT-001' -Category Performance -Title 'Time since restart' -Status Warning -Severity Low -Summary "The computer has not restarted for $days days." -Evidence $os.LastBootUpTime -Recommendation 'Schedule a restart after saving work and confirming maintenance availability.'
+            New-ArchesResult -Id 'SYS-BOOT-001' -Category Performance -Title 'Time since restart' -Status Warning -Severity Low -Summary "The computer has not restarted for $days days." `
+                -Evidence ([PSCustomObject]@{ LastBootUpTime=$os.LastBootUpTime; DaysSinceRestart=$days }) -Recommendation 'Schedule a restart after saving work and confirming maintenance availability.'
         } else {
-            New-ArchesResult -Id 'SYS-BOOT-001' -Category Performance -Title 'Time since restart' -Status Pass -Summary "Last restart was $days day(s) ago." -Evidence $os.LastBootUpTime
+            New-ArchesResult -Id 'SYS-BOOT-001' -Category Performance -Title 'Time since restart' -Status Pass -Summary "Last restart was $days day(s) ago." `
+                -Evidence ([PSCustomObject]@{ LastBootUpTime=$os.LastBootUpTime; DaysSinceRestart=$days })
         }
     }
     $results += Invoke-ArchesDiagnostic 'SYS-UPD-001' 'Security' 'Windows Update service' {
         $service = Get-Service -Name wuauserv -ErrorAction Stop
         if ($service.StartType -eq 'Disabled') {
-            New-ArchesResult -Id 'SYS-UPD-001' -Category Security -Title 'Windows Update service' -Status Fail -Severity High -Summary 'The Windows Update service is disabled.' -Evidence $service -Recommendation 'Review update management policy and enable Windows Update when it is not controlled by another approved tool.'
+            New-ArchesResult -Id 'SYS-UPD-001' -Category Security -Title 'Windows Update service' -Status Fail -Severity High -Summary 'The Windows Update service is disabled.' `
+                -Evidence ([PSCustomObject]@{ ServiceName='wuauserv'; Status=[string]$service.Status; StartType=[string]$service.StartType }) -Recommendation 'Review update management policy and enable Windows Update when it is not controlled by another approved tool.'
         } elseif ($service.Status -ne 'Running') {
-            New-ArchesResult -Id 'SYS-UPD-001' -Category Security -Title 'Windows Update service' -Status Warning -Severity Low -Summary "The Windows Update service is $($service.Status)." -Evidence $service -Recommendation 'Confirm the service can start when Windows checks for updates.'
+            New-ArchesResult -Id 'SYS-UPD-001' -Category Security -Title 'Windows Update service' -Status Warning -Severity Low -Summary "The Windows Update service is $($service.Status)." `
+                -Evidence ([PSCustomObject]@{ ServiceName='wuauserv'; Status=[string]$service.Status; StartType=[string]$service.StartType }) -Recommendation 'Confirm the service can start when Windows checks for updates.'
         } else {
-            New-ArchesResult -Id 'SYS-UPD-001' -Category Security -Title 'Windows Update service' -Status Pass -Summary 'The Windows Update service is running.' -Evidence $service
+            New-ArchesResult -Id 'SYS-UPD-001' -Category Security -Title 'Windows Update service' -Status Pass -Summary 'The Windows Update service is running.' `
+                -Evidence ([PSCustomObject]@{ ServiceName='wuauserv'; Status=[string]$service.Status; StartType=[string]$service.StartType })
         }
     }
     $results += Invoke-ArchesDiagnostic 'SYS-W11-001' 'Hardware' 'Windows 11 readiness clues' {
@@ -161,7 +187,7 @@ function Get-ArchesConnectedDeviceDiagnostics {
         })
         New-ArchesResult -Id 'DEV-ARP-001' -Category 'Connected Devices' -Title 'Neighbor table visibility' -Status Pass `
             -Summary "$($neighbors.Count) active or recently observed IPv4 neighbor(s) found." `
-            -Evidence @($neighbors | Select-Object InterfaceAlias,IPAddress,LinkLayerAddress,State)
+            -Evidence ([PSCustomObject]@{ NeighborCount = $neighbors.Count })
     }
     $results
 }
@@ -173,20 +199,25 @@ function Get-ArchesPerformanceDiagnostics {
         $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
         $percentAvailable = [math]::Round(($os.FreePhysicalMemory / $os.TotalVisibleMemorySize) * 100, 1)
         if ($percentAvailable -le $Configuration.Thresholds.MemoryAvailableCriticalPercent) {
-            New-ArchesResult -Id 'PERF-MEM-001' -Category Performance -Title 'Available memory' -Status Fail -Severity High -Summary "Only $percentAvailable% memory is currently available." -Evidence $os -Recommendation 'Identify memory-heavy processes and evaluate whether the system needs more RAM.'
+            New-ArchesResult -Id 'PERF-MEM-001' -Category Performance -Title 'Available memory' -Status Fail -Severity High -Summary "Only $percentAvailable% memory is currently available." `
+                -Evidence ([PSCustomObject]@{ PercentAvailable=$percentAvailable; FreePhysicalMemoryKB=$os.FreePhysicalMemory; TotalVisibleMemoryKB=$os.TotalVisibleMemorySize }) -Recommendation 'Identify memory-heavy processes and evaluate whether the system needs more RAM.'
         } elseif ($percentAvailable -lt $Configuration.Thresholds.MemoryAvailableWarningPercent) {
-            New-ArchesResult -Id 'PERF-MEM-001' -Category Performance -Title 'Available memory' -Status Warning -Severity Medium -Summary "$percentAvailable% memory is currently available." -Evidence $os -Recommendation 'Review memory pressure and high-usage processes.'
+            New-ArchesResult -Id 'PERF-MEM-001' -Category Performance -Title 'Available memory' -Status Warning -Severity Medium -Summary "$percentAvailable% memory is currently available." `
+                -Evidence ([PSCustomObject]@{ PercentAvailable=$percentAvailable; FreePhysicalMemoryKB=$os.FreePhysicalMemory; TotalVisibleMemoryKB=$os.TotalVisibleMemorySize }) -Recommendation 'Review memory pressure and high-usage processes.'
         } else {
-            New-ArchesResult -Id 'PERF-MEM-001' -Category Performance -Title 'Available memory' -Status Pass -Summary "$percentAvailable% memory is currently available." -Evidence $os
+            New-ArchesResult -Id 'PERF-MEM-001' -Category Performance -Title 'Available memory' -Status Pass -Summary "$percentAvailable% memory is currently available." `
+                -Evidence ([PSCustomObject]@{ PercentAvailable=$percentAvailable; FreePhysicalMemoryKB=$os.FreePhysicalMemory; TotalVisibleMemoryKB=$os.TotalVisibleMemorySize })
         }
     }
     $results += Invoke-ArchesDiagnostic 'PERF-CPU-001' 'Performance' 'Processor utilization' {
         $samples = @(Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object -ExpandProperty LoadPercentage)
         $average = if ($samples.Count) { [math]::Round(($samples | Measure-Object -Average).Average, 1) } else { 0 }
         if ($average -ge $Configuration.Thresholds.CpuWarningPercent) {
-            New-ArchesResult -Id 'PERF-CPU-001' -Category Performance -Title 'Processor utilization' -Status Warning -Severity Medium -Summary "Processor load is currently $average%." -Evidence $samples -Recommendation 'Review sustained CPU use in Task Manager before taking corrective action.'
+            New-ArchesResult -Id 'PERF-CPU-001' -Category Performance -Title 'Processor utilization' -Status Warning -Severity Medium -Summary "Processor load is currently $average%." `
+                -Evidence ([PSCustomObject]@{ AverageLoadPercent=$average }) -Recommendation 'Review sustained CPU use in Task Manager before taking corrective action.'
         } else {
-            New-ArchesResult -Id 'PERF-CPU-001' -Category Performance -Title 'Processor utilization' -Status Pass -Summary "Processor load is currently $average%." -Evidence $samples
+            New-ArchesResult -Id 'PERF-CPU-001' -Category Performance -Title 'Processor utilization' -Status Pass -Summary "Processor load is currently $average%." `
+                -Evidence ([PSCustomObject]@{ AverageLoadPercent=$average })
         }
     }
     $results

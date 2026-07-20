@@ -1,5 +1,9 @@
 Set-StrictMode -Version 2.0
 
+if (-not (Get-Command ConvertTo-ArchesSafeEvidence -ErrorAction SilentlyContinue)) {
+    Import-Module (Join-Path $PSScriptRoot 'Privacy.psm1') -ErrorAction Stop
+}
+
 function Get-ArchesSeverityRank {
     param([string]$Severity)
     switch ($Severity) {
@@ -28,7 +32,8 @@ function New-ArchesResult {
     )
     [PSCustomObject][ordered]@{
         Id = $Id; Category = $Category; Title = $Title; Status = $Status
-        Severity = $Severity; Summary = $Summary; Evidence = $Evidence
+        Severity = $Severity; Summary = $Summary
+        Evidence = ConvertTo-ArchesSafeEvidence -Id $Id -Evidence $Evidence -DiagnosticError:($Status -eq 'Error')
         Recommendation = $Recommendation; RemediationId = $RemediationId
         RequiresAdmin = $RequiresAdmin; CheckedAt = (Get-Date).ToString('o')
     }

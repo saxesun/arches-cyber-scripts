@@ -17,7 +17,7 @@ Phase 1 includes:
 - strict versioned configuration;
 - the diagnostic scope in `Docs/PHASE1-SPEC.md`;
 - approximately 10–15 individually reviewed, thoroughly tested low-risk guided fixes;
-- tiered protection and version 2 data-only rollback;
+- tiered protection and version 3 integrity-protected, data-only rollback;
 - parser and Pester validation with green Windows GitHub Actions;
 - a completed Windows 11 VM validation record.
 
@@ -87,4 +87,3 @@ When code-level Phase 1 work is complete, stop and provide:
 - completed Windows VM validation checklist;
 - exact run, test, report, fix, undo, and troubleshooting commands;
 - a clear statement that the product is an MVP candidate, not client-ready, until Windows VM validation passes.
-

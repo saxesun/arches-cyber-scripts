@@ -40,7 +40,7 @@ Describe 'Configuration-driven diagnostic thresholds' {
         Mock Get-CimInstance -ModuleName Diagnostics {
             switch ($ClassName) {
                 'Win32_LogicalDisk' {
-                    [PSCustomObject]@{ Size = 100000; FreeSpace = $script:diskFreePercent * 1000 }
+                    [PSCustomObject]@{ DeviceID = 'C:'; Size = 100000; FreeSpace = $script:diskFreePercent * 1000 }
                 }
                 'Win32_OperatingSystem' {
                     [PSCustomObject]@{

@@ -123,6 +123,8 @@ Reports identify computer, scan time, scan type, script version, and elevation s
 
 Reports must not expose passwords, tokens, BitLocker recovery keys, browser data, message content, credential-bearing command lines, or unnecessary personal data. Retention cleanup is limited to known Arches Cyber report and rollback directories.
 
+Phase 1 evidence is deny-by-default. `Privacy.psm1` maps each approved finding ID to its permitted evidence fields; unknown IDs export no evidence. Diagnostics construct only those fields, and report export reapplies the allowlist as defense in depth. Current identity evidence is limited to counts, BitLocker evidence excludes key protectors and recovery material, connected-device evidence is limited to a count, and legacy DNS-cache collection is disabled. This allowlist does not make free-form future summaries safe automatically; new findings and fields require privacy review and deterministic tests before approval.
+
 ## Guided remediation
 
 Diagnostics never apply fixes. Every remediation follows `Docs/SAFETY-POLICY.md` and:
@@ -220,7 +222,7 @@ Resolve and document these before implementing the affected behavior:
 3. The deterministic scoring treatment for `Unknown`, `Error`, managed, and not-applicable checks.
 4. The authoritative script version source and versioning/release convention.
 5. Per-operation network timeout values and the maximum retry budget consistent with the two-minute target.
-6. The privacy allowlist for identity, software, process, network-neighbor, and command-line evidence.
+6. Expansion criteria for the implemented deny-by-default privacy allowlist when new identity, software, process, or network evidence is proposed.
 7. The exact management-conflict signals required before firewall, Defender, service, and Windows Update changes.
 8. The individually approved initial remediation catalog beyond `FIX-FW-001` and non-reversible `FIX-DNS-001`.
 9. Whether focused scans require elevation or may return partial results in a non-elevated mode.

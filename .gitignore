@@ -2,6 +2,8 @@ Scripts/Logs/
 Scripts/Rollback/
 Reports/
 CollectedReports/
+ClientReports/
+ClientData/
 *.log
 *.zip
 .DS_Store
