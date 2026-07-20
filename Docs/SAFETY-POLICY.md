@@ -33,6 +33,8 @@ Every catalog entry declares:
 
 Every execution requires explicit approval and supports `WhatIf` where technically possible. Approval applies only to the displayed change; it is not blanket authorization for adjacent changes.
 
+Before approval, Arches Cyber performs read-only preflight and builds a structured plan containing exact targets and before/after values, risk, privileges, disruption, estimated duration, protection tier, reversibility, ownership signals, and verification. `WhatIf` displays and returns this exact plan without executing a change handler. Approval is requested only after the plan is available. Immediately before execution, relevant state is re-read; if it differs from the plan baseline, execution fails closed and requires a new plan.
+
 ## Preflight sequence
 
 Before changing anything:

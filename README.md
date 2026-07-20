@@ -20,12 +20,14 @@ The Windows 11 readiness check reports hardware clues only. Microsoft PC Health 
 
 ## Guided fixes
 
-Fixes are separate from scanning and require explicit approval. Preview a fix with `-WhatIf`, then run it deliberately:
+Fixes are separate from scanning. Read-only preflight displays an exact structured plan before approval. Preview that plan with `-WhatIf`, then run it deliberately:
 
 ```powershell
-.\Scripts\Invoke-ArchesFix.ps1 -Id FIX-FW-001 -Approved -WhatIf
+.\Scripts\Invoke-ArchesFix.ps1 -Id FIX-FW-001 -WhatIf
 .\Scripts\Invoke-ArchesFix.ps1 -Id FIX-FW-001 -Approved
 ```
+
+`-Approved` is not required for `-WhatIf`. Execution rechecks the planned baseline and refuses stale plans.
 
 Firewall changes create a JSON rollback record before changing state. The project intentionally does not offer static-IP-to-DHCP conversion or broad network resets in Phase 1.
 

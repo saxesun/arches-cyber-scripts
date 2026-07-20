@@ -10,6 +10,8 @@ $moduleRoot = Join-Path $PSScriptRoot 'Modules'
     Import-Module (Join-Path $moduleRoot $_) -Force -ErrorAction Stop
 }
 $rollbackDirectory = Join-Path $PSScriptRoot 'Rollback'
-Invoke-ArchesRemediation -Id $Id -RollbackDirectory $rollbackDirectory `
+$plan = New-ArchesRemediationPlan -Id $Id
+Show-ArchesRemediationPlan -Plan $plan
+Invoke-ArchesRemediation -Plan $plan -RollbackDirectory $rollbackDirectory `
     -Approved:$Approved -ExternalProtectionConfirmed:$ExternalProtectionConfirmed `
     -WhatIf:$WhatIfPreference -Confirm:$false

@@ -68,7 +68,8 @@ Describe 'Tiered remediation protection' {
     }
 
     It 'creates Pending firewall data before changing and marks Applied after verification' {
-        $result = Invoke-ArchesRemediation -Id FIX-FW-001 -RollbackDirectory $TestDrive `
+        $plan = New-ArchesRemediationPlan -Id FIX-FW-001
+        $result = Invoke-ArchesRemediation -Plan $plan -RollbackDirectory $TestDrive `
             -Approved -Confirm:$false
         $script:sawPendingBeforeChange | Should -BeTrue
         $result.Changed | Should -BeTrue
@@ -81,7 +82,8 @@ Describe 'Tiered remediation protection' {
     }
 
     It 'does not create a rollback record for DNS cache flush' {
-        $result = Invoke-ArchesRemediation -Id FIX-DNS-001 -RollbackDirectory $TestDrive `
+        $plan = New-ArchesRemediationPlan -Id FIX-DNS-001
+        $result = Invoke-ArchesRemediation -Plan $plan -RollbackDirectory $TestDrive `
             -Approved -Confirm:$false
         $result.RollbackPath | Should -BeNullOrEmpty
         $result.Message | Should -Match 'cannot be restored'
@@ -89,8 +91,45 @@ Describe 'Tiered remediation protection' {
     }
 
     It 'requires approval before remediation' {
-        { Invoke-ArchesRemediation -Id FIX-FW-001 -RollbackDirectory $TestDrive -Confirm:$false } |
+        $plan = New-ArchesRemediationPlan -Id FIX-FW-001
+        { Invoke-ArchesRemediation -Plan $plan -RollbackDirectory $TestDrive -Confirm:$false } |
             Should -Throw '*explicit approval*'
+    }
+
+    It 'previews the exact plan without calling a change handler or requiring approval' {
+        $plan = New-ArchesRemediationPlan -Id FIX-FW-001
+
+        $preview = Invoke-ArchesRemediation -Plan $plan -RollbackDirectory $TestDrive `
+            -WhatIf -Confirm:$false
+
+        $preview.WhatIf | Should -BeTrue
+        @($preview.Plan.Changes.Target) | Should -Be @('Domain', 'Public')
+        Should -Invoke -CommandName Set-ArchesFirewallProfileState -ModuleName Remediation -Times 0 -Exactly
+    }
+
+    It 'executes only the changes displayed in the plan' {
+        $plan = New-ArchesRemediationPlan -Id FIX-FW-001
+
+        Invoke-ArchesRemediation -Plan $plan -RollbackDirectory $TestDrive `
+            -Approved -Confirm:$false | Out-Null
+
+        Should -Invoke -CommandName Set-ArchesFirewallProfileState -ModuleName Remediation `
+            -Times 1 -Exactly -ParameterFilter { $Profile -eq 'Domain' -and $Enabled }
+        Should -Invoke -CommandName Set-ArchesFirewallProfileState -ModuleName Remediation `
+            -Times 1 -Exactly -ParameterFilter { $Profile -eq 'Public' -and $Enabled }
+        Should -Invoke -CommandName Set-ArchesFirewallProfileState -ModuleName Remediation `
+            -Times 0 -Exactly -ParameterFilter { $Profile -eq 'Private' }
+    }
+
+    It 'fails before changing anything when firewall state changes after planning' {
+        $plan = New-ArchesRemediationPlan -Id FIX-FW-001
+        $script:firewallState.Private = $false
+
+        {
+            Invoke-ArchesRemediation -Plan $plan -RollbackDirectory $TestDrive `
+                -Approved -Confirm:$false
+        } | Should -Throw '*changed after planning*No firewall settings were changed*'
+        Should -Invoke -CommandName Set-ArchesFirewallProfileState -ModuleName Remediation -Times 0 -Exactly
     }
 
     It 'detects an unmanaged firewall ownership state' {
@@ -142,17 +181,18 @@ Describe 'Tiered remediation protection' {
         }
 
         {
-            Invoke-ArchesRemediation -Id FIX-FW-001 -RollbackDirectory $TestDrive `
+            $plan = New-ArchesRemediationPlan -Id FIX-FW-001
+            Invoke-ArchesRemediation -Plan $plan -RollbackDirectory $TestDrive `
                 -Approved -Confirm:$false
         } | Should -Throw '*refused*No firewall settings were changed*'
-        Should -Invoke -CommandName Get-ArchesFirewallProfileState -ModuleName Remediation -Times 0 -Exactly
         Should -Invoke -CommandName Set-ArchesFirewallProfileState -ModuleName Remediation -Times 0 -Exactly
     }
 
     It 'reports the application failure after targeted rollback succeeds' {
         Mock Set-ArchesFirewallProfileState -ModuleName Remediation { throw 'application exploded' }
         Mock Restore-ArchesRollback -ModuleName Remediation {}
-        { Invoke-ArchesRemediation -Id FIX-FW-001 -RollbackDirectory $TestDrive `
+        $plan = New-ArchesRemediationPlan -Id FIX-FW-001
+        { Invoke-ArchesRemediation -Plan $plan -RollbackDirectory $TestDrive `
                 -Approved -Confirm:$false } |
             Should -Throw '*application exploded*Targeted rollback succeeded*'
     }
@@ -160,7 +200,8 @@ Describe 'Tiered remediation protection' {
     It 'reports both application and targeted rollback failures' {
         Mock Set-ArchesFirewallProfileState -ModuleName Remediation { throw 'application exploded' }
         Mock Restore-ArchesRollback -ModuleName Remediation { throw 'rollback exploded' }
-        { Invoke-ArchesRemediation -Id FIX-FW-001 -RollbackDirectory $TestDrive `
+        $plan = New-ArchesRemediationPlan -Id FIX-FW-001
+        { Invoke-ArchesRemediation -Plan $plan -RollbackDirectory $TestDrive `
                 -Approved -Confirm:$false } |
             Should -Throw '*application exploded*Targeted rollback also failed*rollback exploded*'
     }
