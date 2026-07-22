@@ -59,6 +59,7 @@ The following are explicitly out of Phase 1:
 - long-term system-health dashboards;
 - backend or cloud dashboards;
 - remote access and centralized management;
+- an optional Wazuh export adapter that emits privacy-reviewed structured JSON findings and validated change events for agent collection, custom rules, and dashboards;
 - automatic report email;
 - full-machine imaging or backup service.
 

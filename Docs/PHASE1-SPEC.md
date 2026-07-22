@@ -125,6 +125,8 @@ Every run creates a unique timestamped report directory and produces:
 
 Reports identify computer, scan time, scan type, script version, and elevation state. Findings are separated from raw evidence. All untrusted system values are HTML-encoded.
 
+The client summary lists validated apply and rollback events that occurred on the report date, with the affected setting and before/after state. The technical view shows the complete retained, validated record lifecycle: creation, application, rollback attempt, final status, exact structured changes, protection tier, verification result, and undo availability. Pending records are not represented as completed changes, and invalid records expose no untrusted change contents.
+
 Reports must not expose passwords, tokens, BitLocker recovery keys, browser data, message content, credential-bearing command lines, or unnecessary personal data. Retention cleanup is limited to known Arches Cyber report and rollback directories.
 
 Phase 1 evidence is deny-by-default. `Privacy.psm1` maps each approved finding ID to its permitted evidence fields; unknown IDs export no evidence. Diagnostics construct only those fields, and report export reapplies the allowlist as defense in depth. Identity evidence is limited to counts, BitLocker evidence excludes key protectors and recovery material, and technical network inventory contains bounded IP/MAC/interface observations without usernames or discovered hostnames. Firewall inventory excludes program paths, service identity, users, and unbounded rule output. Legacy DNS-cache collection is disabled. This allowlist does not make free-form future summaries safe automatically; new findings and fields require privacy review and deterministic tests before approval.
@@ -198,6 +200,7 @@ Baseline reviewed on 2026-07-19 at `diagnostics-module` commit `e552450`.
 - PowerShell 5.1-oriented modular code and a double-click launcher exist.
 - Full and focused scan entry points exist.
 - Stable IDs and isolated diagnostic exception handling exist.
+- The normalized result model includes static business-impact text, and client and technical reports separate the observed condition from why it matters.
 - Configuration loading and threshold validation exist.
 - Health rating names and basic deterministic scoring tests exist.
 - HTML, JSON, and CSV export exists with HTML encoding for current finding fields.
@@ -208,9 +211,9 @@ Baseline reviewed on 2026-07-19 at `diagnostics-module` commit `e552450`.
 ### Contradictions and incomplete requirements
 
 - Complete console output is currently the default; problems-only requires `-ProblemsOnly`.
-- The result model lacks business impact, explicit remediation availability, and richer technical/client separation.
+- Explicit remediation availability remains derived from the remediation ID rather than stored as a first-class result field.
 - Current diagnostics cover only part of the stated scope; update age, users, password policy, adapter addressing, latency/packet loss, listening processes, startup/service failures, and targeted device diagnostics remain incomplete in the modular Phase 1 path.
-- Reports now use a unique directory per run, record scan type, script version and elevation state, and separate client and technical views; business-impact metadata remains incomplete.
+- Reports now use a unique directory per run, record scan type, script version and elevation state, separate client and technical views, render readable approved evidence, and include date-scoped client changes plus complete validated retained change lifecycles.
 - Report/rollback retention settings are validated but automated scoped retention behavior is incomplete.
 - The launcher reports only a generic PowerShell exit code; the required exit-code contract is not implemented.
 - The remediation catalog has two entries, not the target 10–15; supported firewall-management signals and explicit technician attestation are implemented, but the detection catalog still requires managed-environment validation.

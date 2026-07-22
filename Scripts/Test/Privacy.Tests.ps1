@@ -98,6 +98,27 @@ Describe 'Phase 1 evidence and report privacy' {
         $html | Should -Match '&lt;script&gt;seeded-computer&lt;/script&gt;'
     }
 
+    It 'does not expose contents from an invalid rollback record' {
+        $target = Join-Path $TestDrive 'invalid-history-report'
+        $rollbackDirectory = Join-Path $TestDrive 'invalid-history'
+        New-Item -ItemType Directory -Path $rollbackDirectory -Force | Out-Null
+        $invalidPath = Join-Path $rollbackDirectory 'Rollback_seeded_invalid.json'
+        '{"RecordId":"Seeded-Recovery-Password-111111","Changes":["Seeded-Bearer-Token-222222"]}' |
+            Set-Content -LiteralPath $invalidPath -Encoding UTF8
+        $result = New-ArchesResult -Id PASS -Category Security -Title Pass -Status Pass
+        $report = Export-ArchesReport -Results @($result) -Directory $target `
+            -ComputerName TESTPC -RollbackDirectory $rollbackDirectory
+        $jsonText = Get-Content -LiteralPath $report.Json -Raw
+        $html = Get-Content -LiteralPath $report.Html -Raw
+        $json = $jsonText | ConvertFrom-Json
+
+        $json.ChangeHistory[0].Trusted | Should -BeFalse
+        @($json.ChangeHistory[0].Changes).Count | Should -Be 0
+        $jsonText | Should -Not -Match 'Seeded-'
+        $html | Should -Not -Match 'Seeded-'
+        $html | Should -Match 'failed validation and no contents were trusted'
+    }
+
     It 'does not collect the legacy DNS resolver cache' {
         $repositoryRoot = Split-Path -Parent $root
         $legacySource = @(

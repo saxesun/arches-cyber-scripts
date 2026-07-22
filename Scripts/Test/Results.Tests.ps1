@@ -6,6 +6,17 @@ Describe 'Arches result model' {
         $result = New-ArchesResult -Id T1 -Category Security -Title Firewall -Status Fail -Severity High
         $result.Id | Should -Be 'T1'
         $result.Status | Should -Be 'Fail'
+        $result.BusinessImpact | Should -Not -BeNullOrEmpty
+    }
+    It 'allows a reviewed finding-specific business impact' {
+        $result = New-ArchesResult -Id CUSTOM -Category Security -Title Custom -Status Warning `
+            -BusinessImpact 'A reviewed impact statement.'
+        $result.BusinessImpact | Should -Be 'A reviewed impact statement.'
+    }
+    It 'does not turn an uncertain check into a confirmed condition through impact text' {
+        $result = New-ArchesResult -Id SEC-FW-001 -Category Security -Title Firewall -Status Error
+        $result.BusinessImpact | Should -Match 'could not be confirmed'
+        $result.BusinessImpact | Should -Not -Match 'disabled firewall'
     }
     It 'sorts highest severity first' {
         $low = New-ArchesResult -Id L -Category Test -Title Low -Status Warning -Severity Low
