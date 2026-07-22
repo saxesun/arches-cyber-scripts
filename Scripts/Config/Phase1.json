@@ -1,0 +1,22 @@
+{
+  "SchemaVersion": 1,
+  "ReportRetentionDays": 30,
+  "RollbackRetentionDays": 30,
+  "Thresholds": {
+    "DiskFreeWarningPercent": 20,
+    "DiskFreeCriticalPercent": 10,
+    "MemoryAvailableWarningPercent": 20,
+    "MemoryAvailableCriticalPercent": 10,
+    "CpuWarningPercent": 90,
+    "RestartAgeWarningDays": 30,
+    "AntivirusSignatureWarningDays": 3,
+    "LatencyWarningMs": 100,
+    "PacketLossWarningPercent": 2
+  },
+  "Safety": {
+    "RequireExplicitFixApproval": true,
+    "CreateRollbackBeforeChange": true,
+    "AllowNetworkReset": false,
+    "AllowStaticToDhcpChange": false
+  }
+}
