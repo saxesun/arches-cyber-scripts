@@ -5,6 +5,8 @@ function Get-ArchesEvidenceAllowlist {
         'SEC-FW-001' = @('DisabledProfiles', 'ObservedProfiles')
         'SEC-FW-RULES-001' = @('RuleCount', 'EnabledRuleCount', 'AllowRuleCount', 'BlockRuleCount', 'Rules', 'Truncated')
         'SEC-AV-001' = @('SecurityCenterAvailable', 'RegisteredProducts', 'ActiveThirdPartyProducts', 'DefenderAvailable', 'DefenderEnabled', 'DefenderRealTimeEnabled', 'DefenderMode', 'Managed', 'ConflictingSignals')
+        'SEC-MAL-STATUS-001' = @('DefenderAvailable', 'DefenderMode', 'AntivirusEnabled', 'RealTimeProtectionEnabled', 'SignatureAgeDays', 'SignatureLastUpdated', 'SignatureVersion', 'QuickScanEndTime', 'FullScanEndTime', 'LastScanType', 'LastScanEndTime')
+        'SEC-MAL-THREAT-001' = @('ThreatHistoryAvailable', 'DetectedThreatCount', 'DetectionEventCount', 'QuarantinedThreatCount', 'UnresolvedThreatCount', 'ResolvedThreatCount', 'LatestDetectionTime', 'ThreatStatusSummaries')
         'SEC-RDP-001' = @('RegistryValue')
         'SEC-BL-001' = @('MountPoint', 'VolumeStatus', 'ProtectionStatus', 'EncryptionPercentage')
         'SEC-ADM-001' = @('PrincipalCount')

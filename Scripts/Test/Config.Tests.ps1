@@ -15,6 +15,7 @@ Describe 'Phase 1 configuration' {
                     MemoryAvailableCriticalPercent = 10
                     CpuWarningPercent = 90
                     RestartAgeWarningDays = 30
+                    AntivirusSignatureWarningDays = 3
                     LatencyWarningMs = 100
                     PacketLossWarningPercent = 2
                 }

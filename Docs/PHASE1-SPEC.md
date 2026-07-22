@@ -65,6 +65,10 @@ Duplicate finding IDs are rejected. Individual diagnostic failures are isolated.
 
 Antivirus diagnosis correlates Windows Security Center registrations with Defender state and policy clues. Active registered third-party antivirus with Defender passive or inactive is not a failure. Unavailable Security Center, managed ambiguity, unavailable Defender state, and conflicting product signals are `Unknown`. A confirmed `Fail` requires available, consistent evidence that no registered product is active.
 
+When Defender is active, malware diagnostics report security-intelligence age and update time, last completed quick/full scan, and count-only detected, quarantined, resolved, and unresolved threat history. They do not export threat resources, affected paths, usernames, or process paths. Defender-specific health is `Unknown` rather than failed when a third-party antivirus product is authoritative.
+
+Optional quick and full Defender scans run only from the separate Malware Scan Center after scan-specific approval. Full-scan approval warns that the operation can run for hours and materially affect CPU and disk use. The scan center fails closed when Defender readiness or protection ownership cannot be established and never starts a scan automatically from diagnostics or reports.
+
 ### Windows and hardware
 
 - Windows Update health and update age
@@ -109,6 +113,7 @@ Current safe defaults:
 | Available memory critical | 10% | 0–99 and below warning |
 | CPU warning | 90% | 1–100 |
 | Restart age warning | 30 days | 1–3650 |
+| Antivirus signature warning | 3 days | 1–30 |
 | Latency warning | 100 ms | 1–60000 |
 | Packet-loss warning | 2% | 0–100 |
 
@@ -199,6 +204,7 @@ Baseline reviewed on 2026-07-19 at `diagnostics-module` commit `e552450`.
 
 - PowerShell 5.1-oriented modular code and a double-click launcher exist.
 - Full and focused scan entry points exist.
+- Defender malware health, privacy-bounded threat counts, and separately approved quick/full scan controls exist; Windows VM behavior remains to be validated.
 - Stable IDs and isolated diagnostic exception handling exist.
 - The normalized result model includes static business-impact text, and client and technical reports separate the observed condition from why it matters.
 - Configuration loading and threshold validation exist.

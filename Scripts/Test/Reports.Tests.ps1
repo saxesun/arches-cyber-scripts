@@ -106,6 +106,40 @@ Describe 'Arches report export' {
         $html | Should -Not -Match '&quot;NeighborCount&quot;'
     }
 
+    It 'shows malware status signature scan and threat counts in both report views' {
+        $target = Join-Path $TestDrive 'malware-report'
+        $results = @(
+            (New-ArchesResult -Id SEC-AV-001 -Category Security -Title 'Antivirus protection' -Status Pass `
+                -Summary 'Microsoft Defender is active.' -Evidence ([PSCustomObject]@{
+                    SecurityCenterAvailable=$true; RegisteredProducts=@('Microsoft Defender'); ActiveThirdPartyProducts=@()
+                    DefenderAvailable=$true; DefenderEnabled=$true; DefenderRealTimeEnabled=$true; DefenderMode='Normal'
+                    Managed=$false; ConflictingSignals=$false
+                })),
+            (New-ArchesResult -Id SEC-MAL-STATUS-001 -Category Security -Title 'Malware protection status and scan history' -Status Pass `
+                -Evidence ([PSCustomObject]@{
+                    DefenderAvailable=$true; DefenderMode='Normal'; AntivirusEnabled=$true; RealTimeProtectionEnabled=$true
+                    SignatureAgeDays=1; SignatureLastUpdated='2026-07-20T12:00:00-06:00'; SignatureVersion='1.2.3.4'
+                    QuickScanEndTime='2026-07-20T13:00:00-06:00'; FullScanEndTime=$null
+                    LastScanType='Quick'; LastScanEndTime='2026-07-20T13:00:00-06:00'
+                })),
+            (New-ArchesResult -Id SEC-MAL-THREAT-001 -Category Security -Title 'Malware detections and remediation status' -Status Pass `
+                -Evidence ([PSCustomObject]@{
+                    ThreatHistoryAvailable=$true; DetectedThreatCount=2; DetectionEventCount=2
+                    QuarantinedThreatCount=2; UnresolvedThreatCount=0; ResolvedThreatCount=2
+                    LatestDetectionTime='2026-07-19T12:00:00-06:00'; ThreatStatusSummaries=@('Status=Quarantined; Count=2')
+                }))
+        )
+        $report = Export-ArchesReport -Results $results -Directory $target -ComputerName TESTPC
+        $html = Get-Content -LiteralPath $report.Html -Raw
+
+        ([regex]::Matches($html, '<h2>Malware (protection|diagnostics)</h2>')).Count | Should -Be 2
+        $html | Should -Match 'Age: 1 day\(s\)'
+        $html | Should -Match 'Quick - 2026-07-20'
+        $html | Should -Match 'Detected: 2; quarantined: 2; unresolved: 0'
+        $html | Should -Match 'Run an approved Defender scan'
+        $html | Should -Match 'count-only'
+    }
+
     It 'shows today applied and rolled-back changes in the client view and the full lifecycle in technical details' {
         $target = Join-Path $TestDrive 'history-reports'
         $rollbackDirectory = Join-Path $TestDrive 'rollback'

@@ -81,6 +81,7 @@ function Get-ArchesConfiguration {
         MemoryAvailableCriticalPercent = @(0, 99)
         CpuWarningPercent = @(1, 100)
         RestartAgeWarningDays = @(1, 3650)
+        AntivirusSignatureWarningDays = @(1, 30)
         LatencyWarningMs = @(1, 60000)
         PacketLossWarningPercent = @(0, 100)
     }

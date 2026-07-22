@@ -125,17 +125,224 @@ function Get-ArchesSecurityCenterAntivirusProducts {
     })
 }
 
+function Get-ArchesObjectPropertyValue {
+    param(
+        [object]$InputObject,
+        [Parameter(Mandatory)][string]$Name
+    )
+    if ($null -eq $InputObject -or $Name -notin @($InputObject.PSObject.Properties.Name)) {
+        return $null
+    }
+    $InputObject.$Name
+}
+
+function ConvertTo-ArchesDiagnosticTimestamp {
+    param([object]$Value)
+    if ($null -eq $Value -or [string]::IsNullOrWhiteSpace([string]$Value)) {
+        return $null
+    }
+    try {
+        $date = [datetime]$Value
+        if ($date.Year -lt 2000) { return $null }
+        ([DateTimeOffset]$date).ToString('o')
+    }
+    catch { $null }
+}
+
 function Get-ArchesDefenderDiagnosticState {
     $status = Get-MpComputerStatus -ErrorAction Stop
     $managed = Test-Path -LiteralPath 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender' `
         -PathType Container -ErrorAction Stop
+    $quickScanEndTime = ConvertTo-ArchesDiagnosticTimestamp `
+        (Get-ArchesObjectPropertyValue -InputObject $status -Name 'QuickScanEndTime')
+    $fullScanEndTime = ConvertTo-ArchesDiagnosticTimestamp `
+        (Get-ArchesObjectPropertyValue -InputObject $status -Name 'FullScanEndTime')
+    $lastScanType = $null
+    $lastScanEndTime = $null
+    if ($quickScanEndTime -and $fullScanEndTime) {
+        if ([DateTimeOffset]$quickScanEndTime -ge [DateTimeOffset]$fullScanEndTime) {
+            $lastScanType = 'Quick'
+            $lastScanEndTime = $quickScanEndTime
+        }
+        else {
+            $lastScanType = 'Full'
+            $lastScanEndTime = $fullScanEndTime
+        }
+    }
+    elseif ($quickScanEndTime) {
+        $lastScanType = 'Quick'
+        $lastScanEndTime = $quickScanEndTime
+    }
+    elseif ($fullScanEndTime) {
+        $lastScanType = 'Full'
+        $lastScanEndTime = $fullScanEndTime
+    }
+    $signatureAge = Get-ArchesObjectPropertyValue -InputObject $status -Name 'AntivirusSignatureAge'
     [PSCustomObject]@{
         Available = $true
         AntivirusEnabled = [bool]$status.AntivirusEnabled
         RealTimeProtectionEnabled = [bool]$status.RealTimeProtectionEnabled
         RunningMode = [string]$status.AMRunningMode
         Managed = [bool]$managed
+        SignatureAgeDays = if ($null -ne $signatureAge) { [int64]$signatureAge } else { $null }
+        SignatureLastUpdated = ConvertTo-ArchesDiagnosticTimestamp `
+            (Get-ArchesObjectPropertyValue -InputObject $status -Name 'AntivirusSignatureLastUpdated')
+        SignatureVersion = [string](Get-ArchesObjectPropertyValue -InputObject $status -Name 'AntivirusSignatureVersion')
+        QuickScanEndTime = $quickScanEndTime
+        FullScanEndTime = $fullScanEndTime
+        LastScanType = $lastScanType
+        LastScanEndTime = $lastScanEndTime
     }
+}
+
+function Get-ArchesDefenderThreatState {
+    $threats = @(Get-MpThreat -ErrorAction Stop)
+    $detections = @(Get-MpThreatDetection -ErrorAction Stop)
+    $statusValues = @()
+    $unresolved = @()
+    $quarantined = @()
+    foreach ($threat in $threats) {
+        $status = [string](Get-ArchesObjectPropertyValue -InputObject $threat -Name 'Status')
+        $rollupStatus = [string](Get-ArchesObjectPropertyValue -InputObject $threat -Name 'RollupStatus')
+        $statusText = (@($status, $rollupStatus) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ' / '
+        if ([string]::IsNullOrWhiteSpace($statusText)) { $statusText = 'Unspecified' }
+        $statusText = (($statusText -replace '[\r\n;]', ' ').Trim())
+        if ($statusText.Length -gt 80) { $statusText = $statusText.Substring(0, 80) }
+        $statusValues += $statusText
+
+        $isActive = [bool](Get-ArchesObjectPropertyValue -InputObject $threat -Name 'IsActive')
+        if ($isActive -or $statusText -match '(^|[ /_-])(Active|Detected|Failed|Pending|ActionRequired|RemediationRequired)($|[ /_-])') {
+            $unresolved += $threat
+        }
+        if ($statusText -match 'Quarantin') {
+            $quarantined += $threat
+        }
+    }
+    $statusSummaries = @($statusValues | Group-Object | Sort-Object Name | ForEach-Object {
+        'Status={0}; Count={1}' -f $_.Name, $_.Count
+    })
+    $latestDetection = $null
+    $detectionDates = @($detections | ForEach-Object {
+        $value = Get-ArchesObjectPropertyValue -InputObject $_ -Name 'InitialDetectionTime'
+        if ($null -ne $value) {
+            try { [DateTimeOffset]([datetime]$value) } catch { }
+        }
+    })
+    if ($detectionDates.Count) {
+        $latestDetection = ($detectionDates | Sort-Object -Descending | Select-Object -First 1).ToString('o')
+    }
+    [PSCustomObject]@{
+        ThreatHistoryAvailable = $true
+        DetectedThreatCount = $threats.Count
+        DetectionEventCount = $detections.Count
+        QuarantinedThreatCount = $quarantined.Count
+        UnresolvedThreatCount = $unresolved.Count
+        ResolvedThreatCount = [math]::Max(0, $threats.Count - $unresolved.Count)
+        LatestDetectionTime = $latestDetection
+        ThreatStatusSummaries = $statusSummaries
+    }
+}
+
+function Get-ArchesDefenderHealthDiagnostic {
+    param([Parameter(Mandatory)][object]$Configuration)
+    try {
+        $defender = Get-ArchesDefenderDiagnosticState
+    }
+    catch {
+        return New-ArchesResult -Id 'SEC-MAL-STATUS-001' -Category Security `
+            -Title 'Malware protection status and scan history' -Status Unknown -Severity Info `
+            -Summary 'Defender security intelligence and scan history are unavailable.' `
+            -Evidence ([PSCustomObject]@{ DefenderAvailable=$false }) `
+            -Recommendation 'Verify malware protection status in the active antivirus product or its management console.'
+    }
+    $evidence = [PSCustomObject]@{
+        DefenderAvailable = $true
+        DefenderMode = $defender.RunningMode
+        AntivirusEnabled = [bool]$defender.AntivirusEnabled
+        RealTimeProtectionEnabled = [bool]$defender.RealTimeProtectionEnabled
+        SignatureAgeDays = $defender.SignatureAgeDays
+        SignatureLastUpdated = $defender.SignatureLastUpdated
+        SignatureVersion = $defender.SignatureVersion
+        QuickScanEndTime = $defender.QuickScanEndTime
+        FullScanEndTime = $defender.FullScanEndTime
+        LastScanType = $defender.LastScanType
+        LastScanEndTime = $defender.LastScanEndTime
+    }
+    $defenderActive = $defender.AntivirusEnabled -and $defender.RealTimeProtectionEnabled -and
+        $defender.RunningMode -notmatch 'Passive'
+    if (-not $defenderActive) {
+        return New-ArchesResult -Id 'SEC-MAL-STATUS-001' -Category Security `
+            -Title 'Malware protection status and scan history' -Status Unknown -Severity Info `
+            -Summary 'Defender is not active, so its signatures and scan history are not authoritative for the active antivirus product.' `
+            -Evidence $evidence `
+            -Recommendation 'Review scan and signature health in the registered third-party antivirus console.'
+    }
+    if ($null -eq $defender.SignatureAgeDays) {
+        return New-ArchesResult -Id 'SEC-MAL-STATUS-001' -Category Security `
+            -Title 'Malware protection status and scan history' -Status Unknown -Severity Info `
+            -Summary 'Defender is active, but the security-intelligence age was not reported.' `
+            -Evidence $evidence -Recommendation 'Update Defender security intelligence and rerun the diagnostic.'
+    }
+    if ([int64]$defender.SignatureAgeDays -gt [int]$Configuration.Thresholds.AntivirusSignatureWarningDays) {
+        return New-ArchesResult -Id 'SEC-MAL-STATUS-001' -Category Security `
+            -Title 'Malware protection status and scan history' -Status Warning -Severity Medium `
+            -Summary "Defender security intelligence is $($defender.SignatureAgeDays) day(s) old; the warning threshold is $($Configuration.Thresholds.AntivirusSignatureWarningDays) day(s)." `
+            -Evidence $evidence -Recommendation 'Update Defender security intelligence, then confirm the reported age returns to the expected range.'
+    }
+    if (-not $defender.LastScanEndTime) {
+        return New-ArchesResult -Id 'SEC-MAL-STATUS-001' -Category Security `
+            -Title 'Malware protection status and scan history' -Status Warning -Severity Low `
+            -Summary 'Defender is active and security intelligence is current, but no completed quick or full scan time was reported.' `
+            -Evidence $evidence -Recommendation 'Run an approved Defender quick scan and confirm its completion time appears.'
+    }
+    New-ArchesResult -Id 'SEC-MAL-STATUS-001' -Category Security `
+        -Title 'Malware protection status and scan history' -Status Pass `
+        -Summary "Defender is active, security intelligence is current, and the last completed scan was a $($defender.LastScanType.ToLowerInvariant()) scan." `
+        -Evidence $evidence
+}
+
+function Get-ArchesDefenderThreatDiagnostic {
+    try {
+        $defender = Get-ArchesDefenderDiagnosticState
+    }
+    catch {
+        return New-ArchesResult -Id 'SEC-MAL-THREAT-001' -Category Security `
+            -Title 'Malware detections and remediation status' -Status Unknown -Severity Info `
+            -Summary 'Defender threat history is unavailable.' `
+            -Evidence ([PSCustomObject]@{ ThreatHistoryAvailable=$false }) `
+            -Recommendation 'Review threat history in the active antivirus product or its management console.'
+    }
+    if (-not $defender.AntivirusEnabled -or $defender.RunningMode -match 'Passive') {
+        return New-ArchesResult -Id 'SEC-MAL-THREAT-001' -Category Security `
+            -Title 'Malware detections and remediation status' -Status Unknown -Severity Info `
+            -Summary 'Defender is not the active antivirus engine, so its local threat history is not authoritative.' `
+            -Evidence ([PSCustomObject]@{ ThreatHistoryAvailable=$false }) `
+            -Recommendation 'Review detected, quarantined, and unresolved threats in the registered third-party antivirus console.'
+    }
+    try {
+        $threatState = Get-ArchesDefenderThreatState
+    }
+    catch {
+        return New-ArchesResult -Id 'SEC-MAL-THREAT-001' -Category Security `
+            -Title 'Malware detections and remediation status' -Status Unknown -Severity Info `
+            -Summary 'Defender is active, but its threat history could not be read.' `
+            -Evidence ([PSCustomObject]@{ ThreatHistoryAvailable=$false }) `
+            -Recommendation 'Review Windows Security protection history and rerun from an elevated session.'
+    }
+    if ($threatState.UnresolvedThreatCount -gt 0) {
+        return New-ArchesResult -Id 'SEC-MAL-THREAT-001' -Category Security `
+            -Title 'Malware detections and remediation status' -Status Fail -Severity High `
+            -Summary "$($threatState.UnresolvedThreatCount) unresolved Defender threat record(s) require review." `
+            -Evidence $threatState `
+            -Recommendation 'Open Windows Security protection history, investigate the unresolved detections, and follow the approved incident-response process.'
+    }
+    $summary = if ($threatState.DetectedThreatCount) {
+        "$($threatState.DetectedThreatCount) historical threat record(s) were found; none are currently classified as unresolved."
+    }
+    else { 'Defender reported no threat records and no unresolved detections.' }
+    New-ArchesResult -Id 'SEC-MAL-THREAT-001' -Category Security `
+        -Title 'Malware detections and remediation status' -Status Pass -Summary $summary `
+        -Evidence $threatState
 }
 
 function Get-ArchesAntivirusDiagnostic {
@@ -226,6 +433,12 @@ function Get-ArchesSecurityDiagnostics {
     }
     $results += Invoke-ArchesDiagnostic 'SEC-AV-001' 'Security' 'Antivirus protection' {
         Get-ArchesAntivirusDiagnostic
+    }
+    $results += Invoke-ArchesDiagnostic 'SEC-MAL-STATUS-001' 'Security' 'Malware protection status and scan history' {
+        Get-ArchesDefenderHealthDiagnostic -Configuration $Configuration
+    }
+    $results += Invoke-ArchesDiagnostic 'SEC-MAL-THREAT-001' 'Security' 'Malware detections and remediation status' {
+        Get-ArchesDefenderThreatDiagnostic
     }
     $results += Invoke-ArchesDiagnostic 'SEC-RDP-001' 'Security' 'Remote Desktop' {
         $rdp = Get-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -ErrorAction Stop
@@ -518,4 +731,6 @@ function Invoke-ArchesFullScan {
 Export-ModuleMember -Function Test-ArchesAdministrator, Get-ArchesSecurityDiagnostics, `
     Get-ArchesNetworkDiagnostics, Get-ArchesSystemDiagnostics, `
     Get-ArchesConnectedDeviceDiagnostics, Get-ArchesPerformanceDiagnostics, `
-    Invoke-ArchesFullScan, Get-ArchesAntivirusDiagnostic
+    Invoke-ArchesFullScan, Get-ArchesAntivirusDiagnostic, `
+    Get-ArchesDefenderDiagnosticState, Get-ArchesDefenderThreatState, `
+    Get-ArchesDefenderHealthDiagnostic, Get-ArchesDefenderThreatDiagnostic

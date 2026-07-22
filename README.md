@@ -12,11 +12,17 @@ Open Windows PowerShell as Administrator and run:
 
 Focused scans are available with `-Scan Security`, `Network`, `System`, `Devices`, or `Performance`. Use `-ProblemsOnly` for the simplified console view and `-NoOpenReport` for unattended execution. On Windows, `Run-ArchesCyber.bat` provides an elevated double-click launcher.
 
-Each run creates a timestamped folder under `Desktop\ArchesCyberAudit` with an offline HTML dashboard plus JSON and CSV exports. The HTML dashboard opens in Client Summary mode and includes a Technical Details tab with approved IP configuration, observed IPv4/MAC neighbors, firewall-rule inventory, user/admin totals, diagnostic evidence, and validated change history. Diagnostic operations are read-only.
+Each run creates a timestamped folder under `Desktop\ArchesCyberAudit` with an offline HTML dashboard plus JSON and CSV exports. The HTML dashboard opens in Client Summary mode and includes a Technical Details tab with approved IP configuration, observed IPv4/MAC neighbors, firewall-rule inventory, user/admin totals, malware health, diagnostic evidence, and validated change history. Diagnostic operations are read-only.
 
 The large legacy audit scripts and USB launcher are disabled as Phase 1 entry points because their historical multi-file HTML/JSON/CSV/ZIP bundles are not fully covered by the Phase 1 evidence allowlist. Use the repository-level `Run-ArchesCyber.bat` or `Scripts\Start-ArchesCyber.ps1`. Legacy source remains only for controlled migration work and does not collect or export when invoked.
 
 The Windows 11 readiness check reports hardware clues only. Microsoft PC Health Check remains the authoritative compatibility check because CPU model support cannot be determined reliably from core count and architecture alone.
+
+## Malware diagnostics and scans
+
+Security and full scans report registered antivirus ownership, Defender mode, signature age and update time, last completed quick/full scan, and count-only detected, quarantined, resolved, and unresolved threat history. A registered active third-party antivirus product is treated as authoritative; inactive or passive Defender state is not incorrectly reported as a protection failure.
+
+Threat evidence intentionally excludes affected file paths, usernames, process paths, and raw Defender records. Run `Run-ArchesMalwareScan.bat` to open the elevated Malware Scan Center. Quick and full scans each require a fresh confirmation. Full scan approval includes a warning that it can run for hours and materially increase CPU and disk use. The scan center refuses Defender scans when Defender is unavailable, passive, non-authoritative, or superseded by an active third-party product.
 
 ## Guided fixes
 

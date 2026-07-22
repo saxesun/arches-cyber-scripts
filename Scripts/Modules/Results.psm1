@@ -28,6 +28,8 @@ function Get-ArchesBusinessImpact {
     if ($Status -in @('Unknown', 'Error')) {
         switch ($Id) {
             'SEC-AV-001' { return 'Antivirus protection ownership or health could not be confirmed, so a protection gap could be missed until the state is reviewed.' }
+            'SEC-MAL-STATUS-001' { return 'Malware signature or scan health could not be confirmed, so reduced detection coverage may remain unnoticed.' }
+            'SEC-MAL-THREAT-001' { return 'Threat history could not be confirmed, so unresolved malware may remain hidden until the active antivirus console is reviewed.' }
             'NET-GW-001' { return 'Gateway and connectivity health could not be confirmed, so a real outage or policy block may remain hidden.' }
             'NET-DNS-001' { return 'Name-resolution reliability could not be confirmed, so access to websites and cloud services may be unreliable.' }
             'NET-INT-001' { return 'Outbound connectivity could not be confirmed, so access to cloud applications, updates, and communications may be unreliable.' }
@@ -38,6 +40,8 @@ function Get-ArchesBusinessImpact {
     switch ($Id) {
         'SEC-FW-001' { 'A disabled firewall profile can expose the computer to unwanted inbound network traffic, especially on untrusted networks.' }
         'SEC-AV-001' { 'Missing or uncertain antivirus protection can allow malware to remain undetected and disrupt access to business systems or data.' }
+        'SEC-MAL-STATUS-001' { 'Stale malware intelligence or missing scan history can reduce confidence that current threats will be detected promptly.' }
+        'SEC-MAL-THREAT-001' { 'Unresolved malware can compromise business data, credentials, system availability, and connected devices.' }
         'SEC-RDP-001' { 'Unnecessary Remote Desktop access increases the paths an attacker can use to reach the computer.' }
         'SEC-BL-001' { 'Without drive encryption, business data may be readable if the computer or its storage is lost or stolen.' }
         'SEC-SB-001' { 'Disabled Secure Boot weakens protection against malicious or unauthorized code loading before Windows starts.' }

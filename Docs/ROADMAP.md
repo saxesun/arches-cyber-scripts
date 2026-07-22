@@ -10,6 +10,8 @@ Phase 1 includes:
 
 - one-click full scan through `Run-ArchesCyber.bat`;
 - focused Security, Network, System/Hardware, Connected Devices, and Performance scans;
+- privacy-bounded antivirus, Defender signature/scan-history, and malware threat diagnostics;
+- separately approved Defender quick/full scan controls with a full-scan runtime warning;
 - problems-only default presentation with opt-in technical detail;
 - stable structured findings with plain-language summary, business impact, evidence, recommendation, and remediation metadata;
 - deterministic Great/Good/Not Good/Bad/Not Scanned ratings;

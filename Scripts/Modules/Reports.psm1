@@ -26,6 +26,18 @@ function ConvertTo-ArchesDisplayValue {
     [string]$Value
 }
 
+function Get-ArchesEvidenceField {
+    param(
+        [object]$Result,
+        [Parameter(Mandatory)][string]$Name
+    )
+    if ($null -eq $Result -or $null -eq $Result.Evidence -or
+        $Name -notin @($Result.Evidence.PSObject.Properties.Name)) {
+        return $null
+    }
+    $Result.Evidence.$Name
+}
+
 function ConvertTo-ArchesEvidenceHtml {
     param([object]$Evidence)
     if ($null -eq $Evidence) {
@@ -381,6 +393,54 @@ function Export-ArchesReport {
     else {
         '<p class="muted">No retained rollback or change records were found.</p>'
     }
+    $antivirusProtection = $safeResults | Where-Object Id -eq 'SEC-AV-001' | Select-Object -First 1
+    $malwareStatus = $safeResults | Where-Object Id -eq 'SEC-MAL-STATUS-001' | Select-Object -First 1
+    $malwareThreat = $safeResults | Where-Object Id -eq 'SEC-MAL-THREAT-001' | Select-Object -First 1
+    $malwareOverviewRows = @(
+        [PSCustomObject]@{
+            Label = 'Active protection'
+            Result = $antivirusProtection
+            Detail = if ($null -ne $antivirusProtection) { $antivirusProtection.Summary } else { 'Not included in this scan.' }
+        }
+        [PSCustomObject]@{
+            Label = 'Security intelligence'
+            Result = $malwareStatus
+            Detail = if ($null -ne $malwareStatus -and $null -ne $malwareStatus.Evidence) {
+                'Age: {0} day(s); updated: {1}' -f `
+                    (ConvertTo-ArchesDisplayValue (Get-ArchesEvidenceField $malwareStatus 'SignatureAgeDays')),
+                    (ConvertTo-ArchesTimestampDisplay (Get-ArchesEvidenceField $malwareStatus 'SignatureLastUpdated'))
+            }
+            else { 'Not included or unavailable.' }
+        }
+        [PSCustomObject]@{
+            Label = 'Last completed scan'
+            Result = $malwareStatus
+            Detail = if ($null -ne $malwareStatus -and $null -ne $malwareStatus.Evidence) {
+                '{0} - {1}' -f `
+                    (ConvertTo-ArchesDisplayValue (Get-ArchesEvidenceField $malwareStatus 'LastScanType')),
+                    (ConvertTo-ArchesTimestampDisplay (Get-ArchesEvidenceField $malwareStatus 'LastScanEndTime'))
+            }
+            else { 'Not included or unavailable.' }
+        }
+        [PSCustomObject]@{
+            Label = 'Threat records'
+            Result = $malwareThreat
+            Detail = if ($null -ne $malwareThreat -and $null -ne $malwareThreat.Evidence) {
+                'Detected: {0}; quarantined: {1}; unresolved: {2}' -f `
+                    (ConvertTo-ArchesDisplayValue (Get-ArchesEvidenceField $malwareThreat 'DetectedThreatCount')),
+                    (ConvertTo-ArchesDisplayValue (Get-ArchesEvidenceField $malwareThreat 'QuarantinedThreatCount')),
+                    (ConvertTo-ArchesDisplayValue (Get-ArchesEvidenceField $malwareThreat 'UnresolvedThreatCount'))
+            }
+            else { 'Not included or unavailable.' }
+        }
+    ) | ForEach-Object {
+        $status = if ($null -ne $_.Result) { [string]$_.Result.Status } else { 'Not Scanned' }
+        '<div class="malware-item {0}"><span>{1}</span><strong>{2}</strong><small>{3}</small></div>' -f `
+            ($status.ToLowerInvariant() -replace ' ', '-'), (ConvertTo-ArchesHtml $_.Label),
+            (ConvertTo-ArchesHtml $status), (ConvertTo-ArchesHtml $_.Detail)
+    }
+    $malwareOverviewContent = '<div class="malware-grid">{0}</div><p class="muted">Threat reporting is count-only: file paths, usernames, process paths, and raw Defender records are not exported.</p><button class="fix" onclick="showMalwareScanNotice()">Run an approved Defender scan</button>' -f `
+        ($malwareOverviewRows -join "`n")
     $networkInventory = $safeResults | Where-Object Id -eq 'NET-IF-001' | Select-Object -First 1
     $neighborInventory = $safeResults | Where-Object Id -eq 'DEV-ARP-001' | Select-Object -First 1
     $firewallInventory = $safeResults | Where-Object Id -eq 'SEC-FW-RULES-001' | Select-Object -First 1
@@ -400,21 +460,23 @@ function Export-ArchesReport {
     $document = @"
 <!doctype html><html><head><meta charset="utf-8"><title>Arches Cyber Report</title>
 <style>
-:root{--navy:#0b2f64;--blue:#1769d2;--line:#d8e0ea;--soft:#f3f7fb;--green:#17783d;--amber:#a45a00;--red:#b42318}*{box-sizing:border-box}body{font-family:Segoe UI,Arial;margin:0;color:#172033;background:#fff}.shell{max-width:1500px;margin:auto;padding:26px 34px}.top{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:16px}.tabs button{padding:12px 28px;border:1px solid var(--line);background:#fff;color:var(--navy);font-weight:650;cursor:pointer}.tabs button.active{background:var(--navy);color:#fff}.view{display:none}.view.active{display:block}.meta,.card{border:1px solid var(--line);border-radius:10px;padding:18px;margin-top:18px}.meta{background:var(--soft);display:grid;grid-template-columns:repeat(5,1fr);gap:14px}.scores{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}.score{text-align:center;border:1px solid var(--line);border-radius:8px;padding:14px}.score strong{display:block;font-size:28px;color:var(--green)}.table-wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;margin-top:10px}th,td{padding:10px;border:1px solid var(--line);text-align:left;vertical-align:top}th{background:var(--soft)}tr.pass{background:#edf9f1}tr.warning{background:#fff8df}tr.fail{background:#fff0f0}tr.unknown,tr.error{background:#f4f1ff}.fix{background:var(--blue);color:#fff;border:0;border-radius:6px;padding:8px 12px;cursor:pointer}.muted{color:#5b6675}.pill{display:inline-block;border-radius:999px;padding:4px 9px;background:var(--soft)}.pill.verified,.status-applied,.status-rolledback{background:#dff4e7;color:var(--green)}.pill.failed,.status-invalid,.status-rollbackfailed{background:#ffe4e2;color:var(--red)}.split{display:grid;grid-template-columns:2fr 1fr;gap:18px}.notice{padding:14px;border-left:5px solid var(--blue);background:#eef5ff}.warning-note{border-left-color:var(--amber);background:#fff8e5}code{white-space:pre-wrap;word-break:break-word}details summary{cursor:pointer;color:var(--navy);font-weight:650}.evidence-grid{display:grid;grid-template-columns:minmax(135px,1fr) 3fr;margin:12px 0 0;border-top:1px solid var(--line);border-left:1px solid var(--line)}.evidence-grid dt,.evidence-grid dd{margin:0;padding:8px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.evidence-grid dt{font-weight:650;background:var(--soft)}.evidence-list{margin:0;padding-left:20px;max-height:340px;overflow:auto}.evidence-list li{margin-bottom:6px}.history-card{border:1px solid var(--line);border-radius:8px;padding:16px;margin-top:16px}.history-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}.history-head h3{margin:0 0 6px}.timeline{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;background:var(--soft);padding:12px;border-radius:7px;margin-top:14px}.timeline>div{min-width:0}input{padding:10px;width:330px;border:1px solid var(--line);border-radius:6px}.sensitive{color:var(--red);font-weight:700}@media(max-width:900px){.meta,.scores,.split,.timeline{grid-template-columns:1fr}.top,.history-head{display:block}.tabs{margin-top:12px}.shell{padding:16px}.evidence-grid{grid-template-columns:1fr}input{width:100%}}
+:root{--navy:#0b2f64;--blue:#1769d2;--line:#d8e0ea;--soft:#f3f7fb;--green:#17783d;--amber:#a45a00;--red:#b42318}*{box-sizing:border-box}body{font-family:Segoe UI,Arial;margin:0;color:#172033;background:#fff}.shell{max-width:1500px;margin:auto;padding:26px 34px}.top{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:16px}.tabs button{padding:12px 28px;border:1px solid var(--line);background:#fff;color:var(--navy);font-weight:650;cursor:pointer}.tabs button.active{background:var(--navy);color:#fff}.view{display:none}.view.active{display:block}.meta,.card{border:1px solid var(--line);border-radius:10px;padding:18px;margin-top:18px}.meta{background:var(--soft);display:grid;grid-template-columns:repeat(5,1fr);gap:14px}.scores{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}.score{text-align:center;border:1px solid var(--line);border-radius:8px;padding:14px}.score strong{display:block;font-size:28px;color:var(--green)}.malware-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.malware-item{border:1px solid var(--line);border-radius:8px;padding:13px}.malware-item span,.malware-item small{display:block}.malware-item strong{display:block;font-size:18px;margin:5px 0}.malware-item.pass{border-left:5px solid var(--green)}.malware-item.warning{border-left:5px solid var(--amber)}.malware-item.fail{border-left:5px solid var(--red)}.table-wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;margin-top:10px}th,td{padding:10px;border:1px solid var(--line);text-align:left;vertical-align:top}th{background:var(--soft)}tr.pass{background:#edf9f1}tr.warning{background:#fff8df}tr.fail{background:#fff0f0}tr.unknown,tr.error{background:#f4f1ff}.fix{background:var(--blue);color:#fff;border:0;border-radius:6px;padding:8px 12px;cursor:pointer}.muted{color:#5b6675}.pill{display:inline-block;border-radius:999px;padding:4px 9px;background:var(--soft)}.pill.verified,.status-applied,.status-rolledback{background:#dff4e7;color:var(--green)}.pill.failed,.status-invalid,.status-rollbackfailed{background:#ffe4e2;color:var(--red)}.split{display:grid;grid-template-columns:2fr 1fr;gap:18px}.notice{padding:14px;border-left:5px solid var(--blue);background:#eef5ff}.warning-note{border-left-color:var(--amber);background:#fff8e5}code{white-space:pre-wrap;word-break:break-word}details summary{cursor:pointer;color:var(--navy);font-weight:650}.evidence-grid{display:grid;grid-template-columns:minmax(135px,1fr) 3fr;margin:12px 0 0;border-top:1px solid var(--line);border-left:1px solid var(--line)}.evidence-grid dt,.evidence-grid dd{margin:0;padding:8px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.evidence-grid dt{font-weight:650;background:var(--soft)}.evidence-list{margin:0;padding-left:20px;max-height:340px;overflow:auto}.evidence-list li{margin-bottom:6px}.history-card{border:1px solid var(--line);border-radius:8px;padding:16px;margin-top:16px}.history-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}.history-head h3{margin:0 0 6px}.timeline{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;background:var(--soft);padding:12px;border-radius:7px;margin-top:14px}.timeline>div{min-width:0}input{padding:10px;width:330px;border:1px solid var(--line);border-radius:6px}.sensitive{color:var(--red);font-weight:700}@media(max-width:900px){.meta,.scores,.split,.timeline,.malware-grid{grid-template-columns:1fr}.top,.history-head{display:block}.tabs{margin-top:12px}.shell{padding:16px}.evidence-grid{grid-template-columns:1fr}input{width:100%}}
 </style></head><body><div class="shell">
 <div class="top"><div><h1>Arches Cyber Diagnostic Report</h1><span class="muted">Offline report</span></div><div class="tabs"><button id="clientTab" class="active" onclick="switchView('client')">Client Summary</button><button id="techTab" onclick="switchView('technical')">Technical Details</button></div></div>
 <div class="meta"><div><strong>Computer</strong><br>$safeComputerName</div><div><strong>Scan</strong><br>$(ConvertTo-ArchesHtml $ScanType)</div><div><strong>Version</strong><br>$(ConvertTo-ArchesHtml $ScriptVersion)</div><div><strong>Administrator</strong><br>$Elevated</div><div><strong>Generated</strong><br>$(ConvertTo-ArchesHtml (Get-Date))</div></div>
 <section id="client" class="view active"><div class="card"><h2>Health scorecard</h2><div class="scores">$($scoreCards -join "`n")</div></div>
+<div class="card"><h2>Malware protection</h2>$malwareOverviewContent</div>
 <div class="card"><h2>$($confirmed.Count) confirmed findings</h2><p class="muted">Each finding separates what was observed from why it matters and what should happen next.</p><div class="table-wrap"><table><thead><tr><th>Severity</th><th>Finding</th><th>What this means</th><th>Why it matters</th><th>Recommended action</th><th>Next step</th></tr></thead><tbody>$($clientRows -join "`n")</tbody></table></div></div>
 <div class="card"><h2>Changes made today</h2>$todayChangesContent</div>
 <div class="card"><h2>Uncertain and incomplete checks</h2><p><strong>Unknown checks:</strong> $($unknown.Count) &nbsp; <strong>Diagnostic errors:</strong> $($errors.Count)</p><p>Unknown and Error results are not counted as confirmed problems. Open Technical Details to see each affected check and its safe error category.</p></div></section>
-<section id="technical" class="view"><div class="card"><h2>Inventory overview</h2><div class="scores">$($inventoryCards -join "`n")</div><p class="muted">Expand the approved evidence for readable IP configuration, observed IPv4/MAC neighbors, enabled firewall-rule details, and account totals.</p></div><div class="card"><div class="split"><div><h2>Technical results</h2><p class="sensitive">Sensitive technical report - authorized technicians only.</p></div><div><input id="search" oninput="filterRows()" placeholder="Search checks, categories, IDs..."></div></div><div class="table-wrap"><table id="technicalTable"><thead><tr><th>ID</th><th>Severity / status</th><th>Category</th><th>Check</th><th>Meaning and impact</th><th>Approved evidence</th><th>Recommendation</th></tr></thead><tbody>$($technicalRows -join "`n")</tbody></table></div></div>
+<section id="technical" class="view"><div class="card"><h2>Inventory overview</h2><div class="scores">$($inventoryCards -join "`n")</div><p class="muted">Expand the approved evidence for readable IP configuration, observed IPv4/MAC neighbors, enabled firewall-rule details, and account totals.</p></div><div class="card"><h2>Malware diagnostics</h2>$malwareOverviewContent<p>Complete approved Defender evidence is retained in the technical result rows below.</p></div><div class="card"><div class="split"><div><h2>Technical results</h2><p class="sensitive">Sensitive technical report - authorized technicians only.</p></div><div><input id="search" oninput="filterRows()" placeholder="Search checks, categories, IDs..."></div></div><div class="table-wrap"><table id="technicalTable"><thead><tr><th>ID</th><th>Severity / status</th><th>Category</th><th>Check</th><th>Meaning and impact</th><th>Approved evidence</th><th>Recommendation</th></tr></thead><tbody>$($technicalRows -join "`n")</tbody></table></div></div>
 <div class="card"><h2>Complete validated change and rollback history</h2><div class="notice">Every trusted record passed schema, computer, and integrity validation before display. Invalid or modified records are labeled untrusted and never dispatched.</div>$historyContent</div>
 <div class="card"><h2>Machine-readable exports</h2><p>JSON and CSV are stored beside this HTML report for authorized import and troubleshooting.</p></div></section>
 </div><script>
 function switchView(name){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));document.getElementById(name).classList.add('active');document.getElementById(name==='client'?'clientTab':'techTab').classList.add('active')}
 function filterRows(){const q=document.getElementById('search').value.toLowerCase();document.querySelectorAll('#technicalTable tbody tr').forEach(r=>r.style.display=r.innerText.toLowerCase().includes(q)?'':'none')}
 function showFixNotice(){alert('Open Start-ArchesGuidedFixes.ps1 from the trusted Arches Cyber folder to build and approve an exact remediation plan. This offline report cannot execute commands.')}
+function showMalwareScanNotice(){alert('Run Run-ArchesMalwareScan.bat from the trusted Arches Cyber folder. The Malware Scan Center requires a fresh confirmation before every quick or full Defender scan. This offline report cannot execute commands.')}
 </script></body></html>
 "@
     Set-Content -LiteralPath $html -Value $document -Encoding UTF8

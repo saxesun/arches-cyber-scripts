@@ -80,3 +80,79 @@ Describe 'Security Center-aware antivirus diagnosis' {
         $result.Severity | Should -Be 'High'
     }
 }
+
+Describe 'Defender malware diagnostics' {
+    BeforeEach {
+        $script:malwareConfiguration = [PSCustomObject]@{
+            Thresholds = [PSCustomObject]@{ AntivirusSignatureWarningDays = 3 }
+        }
+        $script:malwareDefender = [PSCustomObject]@{
+            Available = $true
+            AntivirusEnabled = $true
+            RealTimeProtectionEnabled = $true
+            RunningMode = 'Normal'
+            Managed = $false
+            SignatureAgeDays = 1
+            SignatureLastUpdated = '2026-07-20T12:00:00-06:00'
+            SignatureVersion = '1.2.3.4'
+            QuickScanEndTime = '2026-07-20T13:00:00-06:00'
+            FullScanEndTime = $null
+            LastScanType = 'Quick'
+            LastScanEndTime = '2026-07-20T13:00:00-06:00'
+        }
+        $script:threatState = [PSCustomObject]@{
+            ThreatHistoryAvailable = $true
+            DetectedThreatCount = 2
+            DetectionEventCount = 3
+            QuarantinedThreatCount = 2
+            UnresolvedThreatCount = 0
+            ResolvedThreatCount = 2
+            LatestDetectionTime = '2026-07-19T12:00:00-06:00'
+            ThreatStatusSummaries = @('Status=Quarantined; Count=2')
+        }
+        Mock Get-ArchesDefenderDiagnosticState -ModuleName Diagnostics { $script:malwareDefender }
+        Mock Get-ArchesDefenderThreatState -ModuleName Diagnostics { $script:threatState }
+    }
+
+    It 'passes current signatures with completed scan history' {
+        $result = Get-ArchesDefenderHealthDiagnostic -Configuration $script:malwareConfiguration
+        $result.Status | Should -Be 'Pass'
+        $result.Evidence.LastScanType | Should -Be 'Quick'
+    }
+
+    It 'warns when Defender signatures exceed the configured age' {
+        $script:malwareDefender.SignatureAgeDays = 4
+        (Get-ArchesDefenderHealthDiagnostic -Configuration $script:malwareConfiguration).Status |
+            Should -Be 'Warning'
+    }
+
+    It 'warns when no completed scan time is reported' {
+        $script:malwareDefender.QuickScanEndTime = $null
+        $script:malwareDefender.LastScanType = $null
+        $script:malwareDefender.LastScanEndTime = $null
+        $result = Get-ArchesDefenderHealthDiagnostic -Configuration $script:malwareConfiguration
+        $result.Status | Should -Be 'Warning'
+        $result.Severity | Should -Be 'Low'
+    }
+
+    It 'treats passive Defender details as non-authoritative rather than failed' {
+        $script:malwareDefender.RunningMode = 'Passive Mode'
+        (Get-ArchesDefenderHealthDiagnostic -Configuration $script:malwareConfiguration).Status |
+            Should -Be 'Unknown'
+    }
+
+    It 'fails when Defender reports an unresolved threat' {
+        $script:threatState.UnresolvedThreatCount = 1
+        $script:threatState.ResolvedThreatCount = 1
+        $result = Get-ArchesDefenderThreatDiagnostic
+        $result.Status | Should -Be 'Fail'
+        $result.Severity | Should -Be 'High'
+    }
+
+    It 'passes resolved and quarantined historical threats with no unresolved record' {
+        $result = Get-ArchesDefenderThreatDiagnostic
+        $result.Status | Should -Be 'Pass'
+        $result.Evidence.QuarantinedThreatCount | Should -Be 2
+        $result.Evidence.UnresolvedThreatCount | Should -Be 0
+    }
+}

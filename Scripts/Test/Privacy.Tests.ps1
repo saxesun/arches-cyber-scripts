@@ -61,6 +61,26 @@ Describe 'Phase 1 evidence and report privacy' {
         ($safe | ConvertTo-Json -Compress) | Should -Not -Match 'Seeded-'
     }
 
+    It 'keeps Defender threat reporting count-only and drops affected paths' {
+        $safe = ConvertTo-ArchesSafeEvidence -Id SEC-MAL-THREAT-001 -Evidence ([PSCustomObject]@{
+            ThreatHistoryAvailable = $true
+            DetectedThreatCount = 2
+            DetectionEventCount = 2
+            QuarantinedThreatCount = 1
+            UnresolvedThreatCount = 1
+            ResolvedThreatCount = 1
+            LatestDetectionTime = '2026-07-20T12:00:00Z'
+            ThreatStatusSummaries = @('Status=Active; Count=1', 'Status=Quarantined; Count=1')
+            Resources = @($seededSecrets[0])
+            ProcessName = $seededSecrets[2]
+            DomainUser = $seededSecrets[4]
+        })
+        @($safe.PSObject.Properties.Name) | Should -Not -Contain 'Resources'
+        @($safe.PSObject.Properties.Name) | Should -Not -Contain 'ProcessName'
+        @($safe.PSObject.Properties.Name) | Should -Not -Contain 'DomainUser'
+        ($safe | ConvertTo-Json -Compress) | Should -Not -Match 'Seeded-'
+    }
+
     It 'sanitizes seeded sensitive values again during report export' {
         $target = Join-Path $TestDrive 'reports'
         $unsafeResult = [PSCustomObject]@{
